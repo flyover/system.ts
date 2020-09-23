@@ -108,9 +108,10 @@ class SystemLoader {
         return __awaiter(this, void 0, void 0, function* () {
             const load = module.load;
             module.load = null;
-            if (load !== null) {
-                yield load();
-            } // before dependencies
+            if (load === null) {
+                return;
+            }
+            yield load(); // before dependencies
             for (const dep_module of module.dep_modules) {
                 yield SystemLoader._load_module_once(dep_module);
             }
@@ -118,14 +119,15 @@ class SystemLoader {
     }
     static _link_module_once(module) {
         return __awaiter(this, void 0, void 0, function* () {
+            const link = module.link;
+            module.link = null;
+            if (link === null) {
+                return;
+            }
             for (const dep_module of module.dep_modules) {
                 yield SystemLoader._link_module_once(dep_module);
             }
-            const link = module.link;
-            module.link = null;
-            if (link !== null) {
-                yield link();
-            } // after dependencies
+            yield link(); // after dependencies
         });
     }
     // import maps

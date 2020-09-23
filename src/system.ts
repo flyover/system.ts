@@ -142,13 +142,15 @@ class SystemLoader {
   }
 
   private static async _load_module_once(module: SystemModule): Promise<void> {
-    const load = module.load; module.load = null; if (load !== null) { await load(); } // before dependencies
+    const load = module.load; module.load = null; if (load === null) { return; }
+    await load(); // before dependencies
     for (const dep_module of module.dep_modules) { await SystemLoader._load_module_once(dep_module); }
   }
 
   private static async _link_module_once(module: SystemModule): Promise<void> {
+    const link = module.link; module.link = null; if (link === null) { return; }
     for (const dep_module of module.dep_modules) { await SystemLoader._link_module_once(dep_module); }
-    const link = module.link; module.link = null; if (link !== null) { await link(); } // after dependencies
+    await link(); // after dependencies
   }
 
   // import maps
