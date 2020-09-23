@@ -1,0 +1,25 @@
+{
+  "name": "@flyover/system",
+  "version": "1.0.0",
+  "description": "A system module loader written in TypeScript.",
+  "main": "build/system.js",
+  "types": "build/system.d.ts",
+  "scripts": {
+    "clean": "rm -rf build",
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "node -p \"require('.'); console.log(System.import);\""
+  },
+  "author": {
+    "name": "Isaac Burns",
+    "email": "isaacburns@gmail.com",
+    "url": "https://github.com/flyover"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^14.10.1"
+  },
+  "devDependencies": {
+    "typescript": "^4.0.2"
+  }
+}
