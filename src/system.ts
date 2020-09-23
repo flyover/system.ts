@@ -225,6 +225,20 @@ class SystemLoader {
     for (const [import_id, import_url] of Object.entries(imports)) {
       // "@foo" -> {["@foo"]: "./abc/a.js"} -> "./abc/a.js"
       if (import_id === id) { return import_url; }
+
+      // wildcard (*)
+      // "@foo/a/bar/b" -> {["@foo/*/bar/*"]: "./abc/*/xyz/*.js"} -> "./abc/a/xyz/b.js"
+      if (import_id.includes("*")) {
+        const import_id_regex: RegExp = new RegExp(import_id.replace(/\*/g, "(.+)"));
+        const match: RegExpMatchArray | null = id.match(import_id_regex);
+        if (match !== null) {
+          let index: number = 1;
+          const url: string = import_url.replace(/\*/g, (): string => match[index++]);
+          // console.log(`${id} -> {[${import_id}]: ${import_url}} -> ${url}`);
+          return url;
+        }
+      }
+
       // "@foo/a.js" -> {["@foo/"]: "./abc/"} -> "./abc/a.js"
       if (id.startsWith(import_id) && import_id.endsWith("/")) {
         const matched: string | undefined = SystemLoader._try_parse_url(id.substring(import_id.length), import_url);

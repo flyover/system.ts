@@ -205,6 +205,18 @@ class SystemLoader {
             if (import_id === id) {
                 return import_url;
             }
+            // wildcard (*)
+            // "@foo/a/bar/b" -> {["@foo/*/bar/*"]: "./abc/*/xyz/*.js"} -> "./abc/a/xyz/b.js"
+            if (import_id.includes("*")) {
+                const import_id_regex = new RegExp(import_id.replace(/\*/g, "(.+)"));
+                const match = id.match(import_id_regex);
+                if (match !== null) {
+                    let index = 1;
+                    const url = import_url.replace(/\*/g, () => match[index++]);
+                    // console.log(`${id} -> {[${import_id}]: ${import_url}} -> ${url}`);
+                    return url;
+                }
+            }
             // "@foo/a.js" -> {["@foo/"]: "./abc/"} -> "./abc/a.js"
             if (id.startsWith(import_id) && import_id.endsWith("/")) {
                 const matched = SystemLoader._try_parse_url(id.substring(import_id.length), import_url);
