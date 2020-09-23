@@ -46,7 +46,9 @@ interface SystemContext {
 
 type SystemImport = (id: string) => Promise<SystemExports>;
 
-type SystemExport = <T>(key: string, value: T) => typeof value;
+type SystemExport = SystemExportObject | SystemExportProperty;
+type SystemExportObject = (exports: Record<string, any>) => SystemExports;
+type SystemExportProperty = <T>(key: string, value: T) => typeof value;
 
 interface SystemMeta {
   url: string;
@@ -121,7 +123,11 @@ class SystemLoader {
       this.register = save_register;
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
-      const _export: SystemExport = <T>(key: string, value: T): typeof value => module.exports[key] = value;
+      const _export: SystemExport = (...args: any[]): any => {
+        if (args.length === 1 && typeof args[0] === "object") { return Object.assign(module.exports, args[0]); }
+        if (args.length === 2 && typeof args[0] === "string") { return module.exports[args[0]] = args[1]; }
+        throw new Error(args.toString());
+      }
       const context: SystemContext = { id: url, import: _import, meta: { url } };
       const { setters, execute } = declare(_export, context);
       for (const [dep_index, dep_id] of deps.entries()) {

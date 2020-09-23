@@ -29,7 +29,9 @@ interface SystemContext {
     meta?: SystemMeta;
 }
 declare type SystemImport = (id: string) => Promise<SystemExports>;
-declare type SystemExport = <T>(key: string, value: T) => typeof value;
+declare type SystemExport = SystemExportObject | SystemExportProperty;
+declare type SystemExportObject = (exports: Record<string, any>) => SystemExports;
+declare type SystemExportProperty = <T>(key: string, value: T) => typeof value;
 interface SystemMeta {
     url: string;
 }

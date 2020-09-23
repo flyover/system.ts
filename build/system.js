@@ -83,7 +83,15 @@ class SystemLoader {
             this.register = save_register;
             const { deps, declare } = registration;
             const _import = (id) => this._import_module(id, url);
-            const _export = (key, value) => module.exports[key] = value;
+            const _export = (...args) => {
+                if (args.length === 1 && typeof args[0] === "object") {
+                    return Object.assign(module.exports, args[0]);
+                }
+                if (args.length === 2 && typeof args[0] === "string") {
+                    return module.exports[args[0]] = args[1];
+                }
+                throw new Error(args.toString());
+            };
             const context = { id: url, import: _import, meta: { url } };
             const { setters, execute } = declare(_export, context);
             for (const [dep_index, dep_id] of deps.entries()) {
