@@ -116,7 +116,6 @@ class SystemLoader {
                 return;
             }
             done[module.url] = true;
-            console.log(`load: ${module.url}`);
             const load = module.load;
             module.load = null;
             if (load !== null) {
@@ -133,7 +132,6 @@ class SystemLoader {
                 return;
             }
             done[module.url] = true;
-            console.log(`link: ${module.url}`);
             for (const dep_module of module.dep_modules) {
                 yield SystemLoader._link_module(dep_module, done);
             }
