@@ -12,7 +12,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 class SystemModule {
-    constructor() {
+    constructor(url) {
+        this.url = url;
         this.dep_modules = new Set(); // dependent modules
         this.load = null;
         this.link = null;
@@ -54,8 +55,8 @@ class SystemLoader {
         return __awaiter(this, void 0, void 0, function* () {
             const url = this._resolve_url(id, parent_url);
             const module = this.registry.get(url) || this._make_module(url);
-            yield SystemLoader._load_module_once(module);
-            yield SystemLoader._link_module_once(module);
+            yield SystemLoader._load_module(module, {});
+            yield SystemLoader._link_module(module, {});
             return module.exports;
         });
     }
@@ -73,7 +74,7 @@ class SystemLoader {
         throw new Error(`Cannot resolve "${id}" from ${parent_url}`);
     }
     _make_module(url) {
-        const module = new SystemModule();
+        const module = new SystemModule(url);
         this.registry.set(url, module);
         module.load = () => __awaiter(this, void 0, void 0, function* () {
             let registration = { deps: [], declare: () => { throw new Error("System.register"); } };
@@ -106,36 +107,44 @@ class SystemLoader {
             if (module.execute !== null) {
                 yield module.execute.call(null);
             }
-            for (const setter of module.setters) {
-                setter(module.exports);
-            }
         });
         return module;
     }
-    static _load_module_once(module) {
+    static _load_module(module, done) {
         return __awaiter(this, void 0, void 0, function* () {
-            const load = module.load;
-            module.load = null;
-            if (load === null) {
+            if (done[module.url]) {
                 return;
             }
-            yield load(); // before dependencies
+            done[module.url] = true;
+            console.log(`load: ${module.url}`);
+            const load = module.load;
+            module.load = null;
+            if (load !== null) {
+                yield load();
+            } // before dependencies
             for (const dep_module of module.dep_modules) {
-                yield SystemLoader._load_module_once(dep_module);
+                yield SystemLoader._load_module(dep_module, done);
             }
         });
     }
-    static _link_module_once(module) {
+    static _link_module(module, done) {
         return __awaiter(this, void 0, void 0, function* () {
-            const link = module.link;
-            module.link = null;
-            if (link === null) {
+            if (done[module.url]) {
                 return;
             }
+            done[module.url] = true;
+            console.log(`link: ${module.url}`);
             for (const dep_module of module.dep_modules) {
-                yield SystemLoader._link_module_once(dep_module);
+                yield SystemLoader._link_module(dep_module, done);
             }
-            yield link(); // after dependencies
+            const link = module.link;
+            module.link = null;
+            if (link !== null) {
+                yield link();
+            } // after dependencies
+            for (const setter of module.setters) {
+                setter(module.exports);
+            }
         });
     }
     // import maps
@@ -208,7 +217,7 @@ class SystemLoader {
             // wildcard (*)
             // "@foo/a/bar/b" -> {["@foo/*/bar/*"]: "./abc/*/xyz/*.js"} -> "./abc/a/xyz/b.js"
             if (import_id.includes("*")) {
-                const import_id_regex = new RegExp(import_id.replace(/\*/g, "(.+)"));
+                const import_id_regex = new RegExp(import_id.replace(/\./g, "\\.").replace(/\*/g, "(.+)"));
                 const match = id.match(import_id_regex);
                 if (match !== null) {
                     let index = 1;

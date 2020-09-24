@@ -62,7 +62,7 @@ class SystemModule {
   public readonly setters: Set<SystemSetter> = new Set(); // setters for modules dependent on this module
   public readonly exports: SystemExports = Object.create(null);
 
-  public constructor() {
+  public constructor(public readonly url: string) {
     Object.defineProperty(this.exports, Symbol.toStringTag, { value: "Module" });
   }
 }
@@ -92,8 +92,8 @@ class SystemLoader {
   private async _import_module(id: string, parent_url: string): Promise<SystemExports> {
     const url: string = this._resolve_url(id, parent_url);
     const module: SystemModule = this.registry.get(url) || this._make_module(url);
-    await SystemLoader._load_module_once(module);
-    await SystemLoader._link_module_once(module);
+    await SystemLoader._load_module(module, {});
+    await SystemLoader._link_module(module, {});
     return module.exports;
   }
 
@@ -112,7 +112,7 @@ class SystemLoader {
   }
 
   private _make_module(url: string): SystemModule {
-    const module: SystemModule = new SystemModule();
+    const module: SystemModule = new SystemModule(url);
     this.registry.set(url, module);
 
     module.load = async (): Promise<void> => {
@@ -141,22 +141,24 @@ class SystemLoader {
 
     module.link = async (): Promise<void> => {
       if (module.execute !== null) { await module.execute.call(null); }
-      for (const setter of module.setters) { setter(module.exports); }
     };
 
     return module;
   }
 
-  private static async _load_module_once(module: SystemModule): Promise<void> {
-    const load = module.load; module.load = null; if (load === null) { return; }
-    await load(); // before dependencies
-    for (const dep_module of module.dep_modules) { await SystemLoader._load_module_once(dep_module); }
+  private static async _load_module(module: SystemModule, done: {[key: string]: boolean}): Promise<void> {
+    if (done[module.url]) { return; } done[module.url] = true;
+    console.log(`load: ${module.url}`);
+    const load = module.load; module.load = null; if (load !== null) { await load(); } // before dependencies
+    for (const dep_module of module.dep_modules) { await SystemLoader._load_module(dep_module, done); }
   }
 
-  private static async _link_module_once(module: SystemModule): Promise<void> {
-    const link = module.link; module.link = null; if (link === null) { return; }
-    for (const dep_module of module.dep_modules) { await SystemLoader._link_module_once(dep_module); }
-    await link(); // after dependencies
+  private static async _link_module(module: SystemModule, done: {[key: string]: boolean}): Promise<void> {
+    if (done[module.url]) { return; } done[module.url] = true;
+    console.log(`link: ${module.url}`);
+    for (const dep_module of module.dep_modules) { await SystemLoader._link_module(dep_module, done); }
+    const link = module.link; module.link = null; if (link !== null) { await link(); } // after dependencies
+    for (const setter of module.setters) { setter(module.exports); }
   }
 
   // import maps
@@ -229,7 +231,7 @@ class SystemLoader {
       // wildcard (*)
       // "@foo/a/bar/b" -> {["@foo/*/bar/*"]: "./abc/*/xyz/*.js"} -> "./abc/a/xyz/b.js"
       if (import_id.includes("*")) {
-        const import_id_regex: RegExp = new RegExp(import_id.replace(/\*/g, "(.+)"));
+        const import_id_regex: RegExp = new RegExp(import_id.replace(/\./g, "\\.").replace(/\*/g, "(.+)"));
         const match: RegExpMatchArray | null = id.match(import_id_regex);
         if (match !== null) {
           let index: number = 1;
