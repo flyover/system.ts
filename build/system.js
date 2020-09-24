@@ -93,7 +93,8 @@ class SystemLoader {
                 }
                 throw new Error(args.toString());
             };
-            const context = { id: url, import: _import, meta: { url } };
+            const resolve = (id) => this._resolve_url(id, url);
+            const context = { id: url, import: _import, meta: { url, resolve } };
             const { setters, execute } = declare(_export, context);
             for (const [dep_index, dep_id] of deps.entries()) {
                 const dep_url = this._resolve_url(dep_id, url);

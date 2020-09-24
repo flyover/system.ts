@@ -52,7 +52,10 @@ type SystemExportProperty = <T>(key: string, value: T) => typeof value;
 
 interface SystemMeta {
   url: string;
+  resolve: SystemResolve;
 }
+
+type SystemResolve = (id: string) => string;
 
 class SystemModule {
   public readonly dep_modules: Set<SystemModule> = new Set(); // dependent modules
@@ -128,7 +131,8 @@ class SystemLoader {
         if (args.length === 2 && typeof args[0] === "string") { return module.exports[args[0]] = args[1]; }
         throw new Error(args.toString());
       }
-      const context: SystemContext = { id: url, import: _import, meta: { url } };
+      const resolve: SystemResolve = (id: string): string => this._resolve_url(id, url);
+      const context: SystemContext = { id: url, import: _import, meta: { url, resolve } };
       const { setters, execute } = declare(_export, context);
       for (const [dep_index, dep_id] of deps.entries()) {
         const dep_url: string = this._resolve_url(dep_id, url);

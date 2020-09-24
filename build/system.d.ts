@@ -34,7 +34,9 @@ declare type SystemExportObject = (exports: Record<string, any>) => SystemExport
 declare type SystemExportProperty = <T>(key: string, value: T) => typeof value;
 interface SystemMeta {
     url: string;
+    resolve: SystemResolve;
 }
+declare type SystemResolve = (id: string) => string;
 declare class SystemModule {
     readonly url: string;
     readonly dep_modules: Set<SystemModule>;
