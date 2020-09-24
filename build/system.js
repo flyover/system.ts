@@ -78,10 +78,10 @@ class SystemLoader {
         this.registry.set(url, module);
         module.load = () => __awaiter(this, void 0, void 0, function* () {
             let registration = { deps: [], declare: () => { throw new Error("System.register"); } };
-            const save_register = this.register;
-            this.register = (deps, declare) => { registration = { deps, declare }; };
+            const save_register = System.register;
+            System.register = (deps, declare) => { registration = { deps, declare }; };
             yield SystemLoader.__load_script(url); // calls System.register
-            this.register = save_register;
+            System.register = save_register;
             const { deps, declare } = registration;
             const _import = (id) => this._import_module(id, url);
             const _export = (...args) => {

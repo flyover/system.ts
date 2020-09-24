@@ -120,10 +120,10 @@ class SystemLoader {
 
     module.load = async (): Promise<void> => {
       let registration: SystemRegistration = { deps: [], declare: () => { throw new Error("System.register"); } };
-      const save_register: SystemRegister | null = this.register;
-      this.register = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
+      const save_register: SystemRegister | null = System.register;
+      System.register = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
       await SystemLoader.__load_script(url); // calls System.register
-      this.register = save_register;
+      System.register = save_register;
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
       const _export: SystemExport = (...args: any[]): any => {
