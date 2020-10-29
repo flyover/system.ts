@@ -127,8 +127,27 @@ class SystemLoader {
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
       const _export: SystemExport = (...args: any[]): any => {
-        if (args.length === 1 && typeof args[0] === "object") { return Object.assign(module.exports, args[0]); }
-        if (args.length === 2 && typeof args[0] === "string") { return module.exports[args[0]] = args[1]; }
+        if (args.length === 1 && typeof args[0] === "object") {
+          const exports: Record<string, any> = args[0];
+          let changed: boolean = false;
+          for (const [key, value] of Object.entries(exports)) {
+            if (!(key in module.exports) || (module.exports[key] !== value)) {
+              module.exports[key] = value;
+              changed = true;
+            }
+          }
+          if (changed) for (const setter of module.setters) { setter(module.exports); }
+          return module.exports;
+        }
+        if (args.length === 2 && typeof args[0] === "string") {
+          const key: string = args[0];
+          const value: any = args[1];
+          if (!(key in module.exports) || (module.exports[key] !== value)) {
+            module.exports[key] = value;
+            for (const setter of module.setters) { setter(module.exports); }
+          }
+          return value;
+        }
         throw new Error(args.toString());
       }
       const resolve: SystemResolve = (id: string): string => this._resolve_url(id, url);
@@ -137,8 +156,10 @@ class SystemLoader {
       for (const [dep_index, dep_id] of deps.entries()) {
         const dep_url: string = this._resolve_url(dep_id, url);
         const dep_module: SystemModule = this.registry.get(dep_url) || this._make_module(dep_url);
-        dep_module.setters.add(setters[dep_index]); // setters match deps order
+        const dep_setter: SystemSetter = setters[dep_index]; // setters match deps order
+        dep_module.setters.add(dep_setter);
         module.dep_modules.add(dep_module);
+        dep_setter(dep_module.exports);
       }
       module.execute = execute;
     };

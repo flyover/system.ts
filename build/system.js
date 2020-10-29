@@ -86,10 +86,30 @@ class SystemLoader {
             const _import = (id) => this._import_module(id, url);
             const _export = (...args) => {
                 if (args.length === 1 && typeof args[0] === "object") {
-                    return Object.assign(module.exports, args[0]);
+                    const exports = args[0];
+                    let changed = false;
+                    for (const [key, value] of Object.entries(exports)) {
+                        if (!(key in module.exports) || (module.exports[key] !== value)) {
+                            module.exports[key] = value;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                        for (const setter of module.setters) {
+                            setter(module.exports);
+                        }
+                    return module.exports;
                 }
                 if (args.length === 2 && typeof args[0] === "string") {
-                    return module.exports[args[0]] = args[1];
+                    const key = args[0];
+                    const value = args[1];
+                    if (!(key in module.exports) || (module.exports[key] !== value)) {
+                        module.exports[key] = value;
+                        for (const setter of module.setters) {
+                            setter(module.exports);
+                        }
+                    }
+                    return value;
                 }
                 throw new Error(args.toString());
             };
@@ -99,8 +119,10 @@ class SystemLoader {
             for (const [dep_index, dep_id] of deps.entries()) {
                 const dep_url = this._resolve_url(dep_id, url);
                 const dep_module = this.registry.get(dep_url) || this._make_module(dep_url);
-                dep_module.setters.add(setters[dep_index]); // setters match deps order
+                const dep_setter = setters[dep_index]; // setters match deps order
+                dep_module.setters.add(dep_setter);
                 module.dep_modules.add(dep_module);
+                dep_setter(dep_module.exports);
             }
             module.execute = execute;
         });
