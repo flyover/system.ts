@@ -163,9 +163,6 @@ class SystemLoader {
             if (link !== null) {
                 yield link();
             } // after dependencies
-            for (const setter of module.setters) {
-                setter(module.exports);
-            }
         });
     }
     // import maps

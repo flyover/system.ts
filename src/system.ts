@@ -181,7 +181,6 @@ class SystemLoader {
     if (done[module.url]) { return; } done[module.url] = true;
     for (const dep_module of module.dep_modules) { await SystemLoader._link_module(dep_module, done); }
     const link = module.link; module.link = null; if (link !== null) { await link(); } // after dependencies
-    for (const setter of module.setters) { setter(module.exports); }
   }
 
   // import maps
