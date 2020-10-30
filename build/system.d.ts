@@ -52,7 +52,6 @@ declare class SystemLoader {
     private base_url;
     private readonly import_map;
     private readonly registry;
-    private register;
     config(config: Readonly<SystemConfig>): void;
     import(id: string): Promise<SystemExports>;
     private _import_module;

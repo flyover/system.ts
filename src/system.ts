@@ -75,7 +75,6 @@ class SystemLoader {
   private base_url: string = SystemLoader.__get_root_url();
   private readonly import_map: SystemImportMap = { imports: {}, scopes: {} };
   private readonly registry: Map<string, SystemModule> = new Map();
-  private register: SystemRegister | null = null;
 
   public config(config: Readonly<SystemConfig>): void {
     if (!this.done_config) { this.done_config = true; }
@@ -119,11 +118,10 @@ class SystemLoader {
     this.registry.set(url, module);
 
     module.load = async (): Promise<void> => {
-      let registration: SystemRegistration = { deps: [], declare: () => { throw new Error("System.register"); } };
-      const save_register: SystemRegister | null = System.register;
-      System.register = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
-      await SystemLoader.__load_script(url); // calls System.register
-      System.register = save_register;
+      const script: string = await SystemLoader.__load_script(url);
+      let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => {} }) };
+      const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
+      (0, eval)(`(function (System) { ${script} })\n//# sourceURL=${module.url}`)({ register });
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
       const _export: SystemExport = (...args: any[]): any => {
@@ -288,27 +286,17 @@ class SystemLoader {
     }
   }
 
-  private static async __load_script(url: string): Promise<void> {
+  private static async __load_script(url: string): Promise<string> {
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_script(${url})`);
-      case "browser":
-        await new Promise((resolve: () => void, reject: (err: any) => void): void => {
-          const script: HTMLScriptElement = document.head.appendChild(document.createElement("script"));
-          script.addEventListener("error", reject);
-          script.addEventListener("load", resolve);
-          script.async = true;
-          script.src = url;
-        });
-        break;
-      case "command":
-        await new Promise((resolve: () => void, reject: (err: any) => void): void => {
-          const path: string = require("url").fileURLToPath(url);
-          require("fs").readFile(path, "utf-8", (err: any, code: string): void => {
-            if (err) { reject(err); }
-            else { require("vm").runInThisContext(code, { filename: url }); resolve(); }
-          });
-        });
-        break;
+      case "browser": {
+        const response: Response = await fetch(url);
+        return await response.text();
+      }
+      case "command": {
+        const filename: string = require("url").fileURLToPath(url);
+        return await require("fs/promises").readFile(filename, "utf-8");
+      }
     }
   }
 

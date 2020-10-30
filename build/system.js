@@ -29,7 +29,6 @@ class SystemLoader {
         this.base_url = SystemLoader.__get_root_url();
         this.import_map = { imports: {}, scopes: {} };
         this.registry = new Map();
-        this.register = null;
     }
     config(config) {
         if (!this.done_config) {
@@ -77,11 +76,10 @@ class SystemLoader {
         const module = new SystemModule(url);
         this.registry.set(url, module);
         module.load = () => __awaiter(this, void 0, void 0, function* () {
-            let registration = { deps: [], declare: () => { throw new Error("System.register"); } };
-            const save_register = System.register;
-            System.register = (deps, declare) => { registration = { deps, declare }; };
-            yield SystemLoader.__load_script(url); // calls System.register
-            System.register = save_register;
+            const script = yield SystemLoader.__load_script(url);
+            let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
+            const register = (deps, declare) => { registration = { deps, declare }; };
+            (0, eval)(`(function (System) { ${script} })\n//# sourceURL=${module.url}`)({ register });
             const { deps, declare } = registration;
             const _import = (id) => this._import_module(id, url);
             const _export = (...args) => {
@@ -265,29 +263,14 @@ class SystemLoader {
         return __awaiter(this, void 0, void 0, function* () {
             switch (SystemLoader.PLATFORM) {
                 default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_script(${url})`);
-                case "browser":
-                    yield new Promise((resolve, reject) => {
-                        const script = document.head.appendChild(document.createElement("script"));
-                        script.addEventListener("error", reject);
-                        script.addEventListener("load", resolve);
-                        script.async = true;
-                        script.src = url;
-                    });
-                    break;
-                case "command":
-                    yield new Promise((resolve, reject) => {
-                        const path = require("url").fileURLToPath(url);
-                        require("fs").readFile(path, "utf-8", (err, code) => {
-                            if (err) {
-                                reject(err);
-                            }
-                            else {
-                                require("vm").runInThisContext(code, { filename: url });
-                                resolve();
-                            }
-                        });
-                    });
-                    break;
+                case "browser": {
+                    const response = yield fetch(url);
+                    return yield response.text();
+                }
+                case "command": {
+                    const filename = require("url").fileURLToPath(url);
+                    return yield require("fs/promises").readFile(filename, "utf-8");
+                }
             }
         });
     }
