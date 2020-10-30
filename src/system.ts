@@ -334,3 +334,7 @@ const System: SystemLoader = new SystemLoader();
 interface Window { readonly System: SystemLoader; } // browser
 interface global { readonly System: SystemLoader; } // command
 (<any>globalThis)["System"] = System;
+
+interface Window { readonly SystemLoader: typeof SystemLoader; } // browser
+interface global { readonly SystemLoader: typeof SystemLoader; } // command
+(<any>globalThis)["SystemLoader"] = SystemLoader;

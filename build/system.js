@@ -322,4 +322,5 @@ SystemLoader.PLATFORM = (() => {
 // global instance
 const System = new SystemLoader();
 globalThis["System"] = System;
+globalThis["SystemLoader"] = SystemLoader;
 //# sourceMappingURL=system.js.map

@@ -79,3 +79,9 @@ interface Window {
 interface global {
     readonly System: SystemLoader;
 }
+interface Window {
+    readonly SystemLoader: typeof SystemLoader;
+}
+interface global {
+    readonly SystemLoader: typeof SystemLoader;
+}
