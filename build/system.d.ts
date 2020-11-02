@@ -72,6 +72,7 @@ declare class SystemLoader {
     private static __load_text;
     private static __init_config;
 }
+declare const System: SystemLoader;
 interface global {
     readonly System: SystemLoader;
 }
