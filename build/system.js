@@ -81,7 +81,11 @@ class SystemLoader {
             const text = yield SystemLoader.__load_text(url);
             let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
             const register = (deps, declare) => { registration = { deps, declare }; };
-            (0, eval)(`(function (System, module, exports) {\n${text}\n})\n//# sourceURL=${module.url}`)({ register }, module, module.exports);
+            const common_module = { exports: module.exports };
+            (0, eval)(`(function (System, module, exports) { ${text}\n})\n//# sourceURL=${module.url}`)({ register }, common_module, common_module.exports);
+            if (common_module.exports !== module.exports) {
+                module.exports["default"] = common_module.exports;
+            }
             const { deps, declare } = registration;
             const _import = (id) => this._import_module(id, url);
             const _export = (...args) => {
