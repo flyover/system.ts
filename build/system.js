@@ -45,7 +45,9 @@ class SystemLoader {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.done_config) {
                 this.done_config = true;
-                yield SystemLoader.__init_config();
+                for (const config of yield SystemLoader.__init_config()) {
+                    this.config(config);
+                }
             }
             return this._import_module(id, this.base_url);
         });
@@ -76,10 +78,10 @@ class SystemLoader {
         const module = new SystemModule(url);
         this.registry.set(url, module);
         module.load = () => __awaiter(this, void 0, void 0, function* () {
-            const script = yield SystemLoader.__load_script(url);
+            const text = yield SystemLoader.__load_text(url);
             let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
             const register = (deps, declare) => { registration = { deps, declare }; };
-            (0, eval)(`(function (System) { ${script} })\n//# sourceURL=${module.url}`)({ register });
+            (0, eval)(`(function (System) { ${text} })\n//# sourceURL=${module.url}`)({ register });
             const { deps, declare } = registration;
             const _import = (id) => this._import_module(id, url);
             const _export = (...args) => {
@@ -259,10 +261,10 @@ class SystemLoader {
             case "command": return require("url").pathToFileURL(`${process.cwd()}/`).href;
         }
     }
-    static __load_script(url) {
+    static __load_text(url) {
         return __awaiter(this, void 0, void 0, function* () {
             switch (SystemLoader.PLATFORM) {
-                default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_script(${url})`);
+                default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_text(${url})`);
                 case "browser": {
                     const response = yield fetch(url);
                     return yield response.text();
@@ -276,19 +278,20 @@ class SystemLoader {
     }
     static __init_config() {
         return __awaiter(this, void 0, void 0, function* () {
+            const configs = new Set();
             switch (SystemLoader.PLATFORM) {
                 default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __init_config()`);
                 case "browser":
                     for (const script of document.querySelectorAll("script")) {
-                        if (script.type === "systemjs-importmap") {
+                        if (["importmap", "systemjs-importmap"].includes(script.type)) {
                             if (script.src) {
                                 // <script src="import-map.json"></script>
-                                const response = yield fetch(script.src);
-                                System.config({ map: JSON.parse(yield response.json()) });
+                                const text = yield SystemLoader.__load_text(script.src);
+                                configs.add({ map: JSON.parse(text) });
                             }
                             else {
                                 // <script>{ imports: { ... }, scopes: { ... } }</script>
-                                System.config({ map: JSON.parse(script.innerHTML) });
+                                configs.add({ map: JSON.parse(script.innerHTML) });
                             }
                         }
                     }
@@ -296,16 +299,22 @@ class SystemLoader {
                 case "command":
                     // System.config({ ... });
                     try {
-                        module.require(require("path").resolve(process.cwd(), "system.config.js"));
+                        const url = require("path").resolve(process.cwd(), "system.config.js");
+                        const text = yield SystemLoader.__load_text(url);
+                        const config = (config) => { configs.add(config); };
+                        (0, eval)(`(function (System) { ${text} })\n//# sourceURL=${url}`)({ config });
                     }
                     catch (err) { }
                     // { imports: { ... }, scopes: { ... } }
                     try {
-                        System.config(JSON.parse(require("path").resolve(process.cwd(), "system.config.json")));
+                        const url = require("path").resolve(process.cwd(), "system.config.json");
+                        const text = yield SystemLoader.__load_text(url);
+                        configs.add(JSON.parse(text));
                     }
                     catch (err) { }
                     break;
             }
+            return configs;
         });
     }
 }
@@ -319,8 +328,6 @@ SystemLoader.PLATFORM = (() => {
     }
     throw new Error("TODO: PLATFORM");
 })();
-// global instance
-const System = new SystemLoader();
-globalThis["System"] = System;
+globalThis["System"] = new SystemLoader();
 globalThis["SystemLoader"] = SystemLoader;
 //# sourceMappingURL=system.js.map

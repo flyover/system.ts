@@ -69,18 +69,11 @@ declare class SystemLoader {
     private static _resolve_imports;
     private static readonly PLATFORM;
     private static __get_root_url;
-    private static __load_script;
+    private static __load_text;
     private static __init_config;
-}
-declare const System: SystemLoader;
-interface Window {
-    readonly System: SystemLoader;
 }
 interface global {
     readonly System: SystemLoader;
-}
-interface Window {
-    readonly SystemLoader: typeof SystemLoader;
 }
 interface global {
     readonly SystemLoader: typeof SystemLoader;

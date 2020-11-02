@@ -87,7 +87,10 @@ class SystemLoader {
   }
 
   public async import(id: string): Promise<SystemExports> {
-    if (!this.done_config) { this.done_config = true; await SystemLoader.__init_config(); }
+    if (!this.done_config) {
+      this.done_config = true;
+      for (const config of await SystemLoader.__init_config()) { this.config(config); }
+    }
     return this._import_module(id, this.base_url);
   }
 
@@ -118,10 +121,10 @@ class SystemLoader {
     this.registry.set(url, module);
 
     module.load = async (): Promise<void> => {
-      const script: string = await SystemLoader.__load_script(url);
-      let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => {} }) };
+      const text: string = await SystemLoader.__load_text(url);
+      let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => { } }) };
       const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
-      (0, eval)(`(function (System) { ${script} })\n//# sourceURL=${module.url}`)({ register });
+      (0, eval)(`(function (System) { ${text} })\n//# sourceURL=${module.url}`)({ register });
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
       const _export: SystemExport = (...args: any[]): any => {
@@ -169,13 +172,13 @@ class SystemLoader {
     return module;
   }
 
-  private static async _load_module(module: SystemModule, done: {[key: string]: boolean}): Promise<void> {
+  private static async _load_module(module: SystemModule, done: { [key: string]: boolean }): Promise<void> {
     if (done[module.url]) { return; } done[module.url] = true;
     const load = module.load; module.load = null; if (load !== null) { await load(); } // before dependencies
     for (const dep_module of module.dep_modules) { await SystemLoader._load_module(dep_module, done); }
   }
 
-  private static async _link_module(module: SystemModule, done: {[key: string]: boolean}): Promise<void> {
+  private static async _link_module(module: SystemModule, done: { [key: string]: boolean }): Promise<void> {
     if (done[module.url]) { return; } done[module.url] = true;
     for (const dep_module of module.dep_modules) { await SystemLoader._link_module(dep_module, done); }
     const link = module.link; module.link = null; if (link !== null) { await link(); } // after dependencies
@@ -286,9 +289,9 @@ class SystemLoader {
     }
   }
 
-  private static async __load_script(url: string): Promise<string> {
+  private static async __load_text(url: string): Promise<string> {
     switch (SystemLoader.PLATFORM) {
-      default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_script(${url})`);
+      default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_text(${url})`);
       case "browser": {
         const response: Response = await fetch(url);
         return await response.text();
@@ -300,41 +303,51 @@ class SystemLoader {
     }
   }
 
-  private static async __init_config(): Promise<void> {
+  private static async __init_config(): Promise<Set<Readonly<SystemConfig>>> {
+    const configs: Set<Readonly<SystemConfig>> = new Set();
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __init_config()`);
       case "browser":
         for (const script of document.querySelectorAll("script")) {
-          if (script.type === "systemjs-importmap") {
+          if (["importmap", "systemjs-importmap"].includes(script.type)) {
             if (script.src) {
               // <script src="import-map.json"></script>
-              const response: Response = await fetch(script.src);
-              System.config({ map: JSON.parse(await response.json()) });
+              const text: string = await SystemLoader.__load_text(script.src);
+              configs.add({ map: JSON.parse(text) });
             }
             else {
               // <script>{ imports: { ... }, scopes: { ... } }</script>
-              System.config({ map: JSON.parse(script.innerHTML) });
+              configs.add({ map: JSON.parse(script.innerHTML) });
             }
           }
         }
         break;
       case "command":
         // System.config({ ... });
-        try { module.require(require("path").resolve(process.cwd(), "system.config.js")); } catch (err) { }
+        try {
+          const url: string = require("path").resolve(process.cwd(), "system.config.js");
+          const text: string = await SystemLoader.__load_text(url);
+          const config = (config: Readonly<SystemConfig>): void => { configs.add(config); };
+          (0, eval)(`(function (System) { ${text} })\n//# sourceURL=${url}`)({ config });
+        } catch (err) { }
         // { imports: { ... }, scopes: { ... } }
-        try { System.config(JSON.parse(require("path").resolve(process.cwd(), "system.config.json"))); } catch (err) { }
+        try {
+          const url: string = require("path").resolve(process.cwd(), "system.config.json")
+          const text: string = await SystemLoader.__load_text(url);
+          configs.add(JSON.parse(text));
+        } catch (err) { }
         break;
     }
+    return configs;
   }
 }
 
 // global instance
 
-const System: SystemLoader = new SystemLoader();
-interface Window { readonly System: SystemLoader; } // browser
-interface global { readonly System: SystemLoader; } // command
-(<any>globalThis)["System"] = System;
+interface global { readonly System: SystemLoader; }
+(<any>globalThis)["System"] = new SystemLoader();
 
-interface Window { readonly SystemLoader: typeof SystemLoader; } // browser
-interface global { readonly SystemLoader: typeof SystemLoader; } // command
+// global constructor
+
+interface global { readonly SystemLoader: typeof SystemLoader; }
 (<any>globalThis)["SystemLoader"] = SystemLoader;
