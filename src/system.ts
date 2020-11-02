@@ -126,7 +126,7 @@ class SystemLoader {
       const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
       const common_module = { exports: module.exports };
       (0, eval)(`(function (System, module, exports) { ${text}\n})\n//# sourceURL=${module.url}`)({ register }, common_module, common_module.exports);
-      if (common_module.exports !== module.exports) { module.exports["default"] = common_module.exports; }
+      if (common_module.exports !== module.exports) { module.exports.default = common_module.exports; }
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
       const _export: SystemExport = (...args: any[]): any => {
