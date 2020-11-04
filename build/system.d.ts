@@ -1,7 +1,8 @@
-interface SystemConfig {
+interface SystemConfiguration {
     readonly baseUrl?: string;
     readonly map?: Partial<SystemImportMap>;
 }
+declare type SystemConfigure = (config: Readonly<SystemConfiguration>) => void;
 interface SystemImportMap {
     scopes: SystemScopes;
     imports: SystemImports;
@@ -52,7 +53,7 @@ declare class SystemLoader {
     private base_url;
     private readonly import_map;
     private readonly registry;
-    config(config: Readonly<SystemConfig>): void;
+    config(config: Readonly<SystemConfiguration>): void;
     import(id: string): Promise<SystemExports>;
     private _init;
     private _import_module;

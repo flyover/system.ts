@@ -80,11 +80,11 @@ class SystemLoader {
         const module = new SystemModule(url);
         this.registry.set(url, module);
         module.load = () => __awaiter(this, void 0, void 0, function* () {
-            const text = yield SystemLoader.__load_text(url);
+            const source = yield SystemLoader.__load_text(url);
             let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
             const register = (deps, declare) => { registration = { deps, declare }; };
             const common_module = { exports: module.exports };
-            (0, eval)(`(function (System, module, exports) { ${text}\n})\n//# sourceURL=${module.url}`)({ register }, common_module, common_module.exports);
+            (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${url}`)({ register }, common_module, common_module.exports);
             if (common_module.exports !== module.exports) {
                 module.exports.default = common_module.exports;
             }
@@ -295,8 +295,8 @@ class SystemLoader {
                         if (["importmap", "systemjs-importmap"].includes(script.type)) {
                             if (script.src) {
                                 // <script type="systemjs-importmap" src="import-map.json"></script>
-                                const text = yield SystemLoader.__load_text(script.src);
-                                configs.add({ map: JSON.parse(text) });
+                                const source = yield SystemLoader.__load_text(script.src);
+                                configs.add({ map: JSON.parse(source) });
                             }
                             else {
                                 // <script type="systemjs-importmap">{ imports: { ... }, scopes: { ... } }</script>
@@ -309,16 +309,16 @@ class SystemLoader {
                     // System.config({ ... });
                     try {
                         const url = require("path").resolve(process.cwd(), "system.config.js");
-                        const text = yield SystemLoader.__load_text(url);
+                        const source = yield SystemLoader.__load_text(url);
                         const config = (config) => { configs.add(config); };
-                        (0, eval)(`(function (System) { ${text}\n})\n//# sourceURL=${url}`)({ config });
+                        (0, eval)(`(function (System) { ${source}\n})\n//# sourceURL=${url}`)({ config });
                     }
                     catch (err) { }
                     // { imports: { ... }, scopes: { ... } }
                     try {
                         const url = require("path").resolve(process.cwd(), "system.config.json");
-                        const text = yield SystemLoader.__load_text(url);
-                        configs.add(JSON.parse(text));
+                        const source = yield SystemLoader.__load_text(url);
+                        configs.add(JSON.parse(source));
                     }
                     catch (err) { }
                     break;

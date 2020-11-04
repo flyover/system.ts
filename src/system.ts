@@ -2,10 +2,12 @@
 // Copyright (c) Flyover Games, LLC
 //
 
-interface SystemConfig {
+interface SystemConfiguration {
   readonly baseUrl?: string;
   readonly map?: Partial<SystemImportMap>;
 }
+
+type SystemConfigure = (config: Readonly<SystemConfiguration>) => void;
 
 interface SystemImportMap {
   scopes: SystemScopes;
@@ -76,7 +78,7 @@ class SystemLoader {
   private readonly import_map: SystemImportMap = { imports: {}, scopes: {} };
   private readonly registry: Map<string, SystemModule> = new Map();
 
-  public config(config: Readonly<SystemConfig>): void {
+  public config(config: Readonly<SystemConfiguration>): void {
     if (config.baseUrl) {
       this.base_url = SystemLoader._try_parse_url_like(config.baseUrl, SystemLoader.__get_root_url()) || this.base_url;
     }
@@ -126,11 +128,11 @@ class SystemLoader {
     this.registry.set(url, module);
 
     module.load = async (): Promise<void> => {
-      const text: string = await SystemLoader.__load_text(url);
+      const source: string = await SystemLoader.__load_text(url);
       let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => { } }) };
       const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
       const common_module = { exports: module.exports };
-      (0, eval)(`(function (System, module, exports) { ${text}\n})\n//# sourceURL=${module.url}`)({ register }, common_module, common_module.exports);
+      (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${url}`)({ register }, common_module, common_module.exports);
       if (common_module.exports !== module.exports) { module.exports.default = common_module.exports; }
       const { deps, declare } = registration;
       const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
@@ -311,8 +313,8 @@ class SystemLoader {
     }
   }
 
-  private static async __get_init_configs(): Promise<Set<Readonly<SystemConfig>>> {
-    const configs: Set<Readonly<SystemConfig>> = new Set();
+  private static async __get_init_configs(): Promise<Set<Readonly<SystemConfiguration>>> {
+    const configs: Set<Readonly<SystemConfiguration>> = new Set();
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_configs()`);
       case "browser":
@@ -320,8 +322,8 @@ class SystemLoader {
           if (["importmap", "systemjs-importmap"].includes(script.type)) {
             if (script.src) {
               // <script type="systemjs-importmap" src="import-map.json"></script>
-              const text: string = await SystemLoader.__load_text(script.src);
-              configs.add({ map: JSON.parse(text) });
+              const source: string = await SystemLoader.__load_text(script.src);
+              configs.add({ map: JSON.parse(source) });
             }
             else {
               // <script type="systemjs-importmap">{ imports: { ... }, scopes: { ... } }</script>
@@ -334,15 +336,15 @@ class SystemLoader {
         // System.config({ ... });
         try {
           const url: string = require("path").resolve(process.cwd(), "system.config.js");
-          const text: string = await SystemLoader.__load_text(url);
-          const config = (config: Readonly<SystemConfig>): void => { configs.add(config); };
-          (0, eval)(`(function (System) { ${text}\n})\n//# sourceURL=${url}`)({ config });
+          const source: string = await SystemLoader.__load_text(url);
+          const config: SystemConfigure = (config: Readonly<SystemConfiguration>): void => { configs.add(config); };
+          (0, eval)(`(function (System) { ${source}\n})\n//# sourceURL=${url}`)({ config });
         } catch (err) { }
         // { imports: { ... }, scopes: { ... } }
         try {
           const url: string = require("path").resolve(process.cwd(), "system.config.json");
-          const text: string = await SystemLoader.__load_text(url);
-          configs.add(JSON.parse(text));
+          const source: string = await SystemLoader.__load_text(url);
+          configs.add(JSON.parse(source));
         } catch (err) { }
         break;
     }
