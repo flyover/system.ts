@@ -60,23 +60,96 @@ interface SystemMeta {
 type SystemResolve = (id: string) => string;
 
 class SystemModule {
-  public readonly dep_modules: Set<SystemModule> = new Set(); // dependent modules
-  public load: (() => Promise<void>) | null = null;
-  public link: (() => Promise<void>) | null = null;
-  public execute: SystemExecute | null = null;
-  public readonly setters: Set<SystemSetter> = new Set(); // setters for modules dependent on this module
-  public readonly exports: SystemExports = Object.create(null);
+  private readonly dep_modules: Set<SystemModule> = new Set(); // dependent modules
+  private load_done: boolean = false;
+  private link_done: boolean = false;
+  private execute: SystemExecute | null = null;
+  private readonly setters: Set<SystemSetter> = new Set(); // setters for modules dependent on this module
+  private readonly exports: SystemExports = Object.create(null);
+  private readonly dep_load_done: Set<string> = new Set();
+  private readonly dep_link_done: Set<string> = new Set();
 
-  public constructor(public readonly url: string) {
+  public constructor(public readonly loader: SystemLoader, public readonly url: string) {
+    this.loader.registry.set(this.url, this);
     Object.defineProperty(this.exports, Symbol.toStringTag, { value: "Module" });
+  }
+
+  private async _load(): Promise<void> {
+    const source: string = await SystemLoader.__load_text(this.url);
+    let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => { } }) };
+    const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
+    const common = { exports: this.exports };
+    (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
+    if (common.exports !== this.exports) { this.exports.default = common.exports; }
+    const { deps, declare } = registration;
+    const _import: SystemImport = (id: string): Promise<SystemExports> => this.loader.import(id, this.url);
+    const _export: SystemExport = (...args: any[]): any => {
+      if (args.length === 1 && typeof args[0] === "object") { return this._export_object(args[0]); }
+      if (args.length === 2 && typeof args[0] === "string") { return this._export_property(args[0], args[1]); }
+      throw new Error(args.toString());
+    }
+    const resolve: SystemResolve = (id: string): string => this.loader.resolve(id, this.url);
+    const context: SystemContext = { id: this.url, import: _import, meta: { url: this.url, resolve } };
+    const { setters, execute } = declare(_export, context);
+    for (const [dep_index, dep_id] of deps.entries()) {
+      const dep_url: string = this.loader.resolve(dep_id, this.url);
+      const dep_module: SystemModule = this.loader.registry.get(dep_url) || new SystemModule(this.loader, dep_url);
+      this.dep_modules.add(dep_module);
+      const dep_setter: SystemSetter | undefined = setters[dep_index]; // setters match deps order
+      if (dep_setter) { dep_module.setters.add(dep_setter); dep_setter(dep_module.exports); }
+    }
+    if (execute) { this.execute = execute; }
+  }
+
+  public async _link(): Promise<void> {
+    if (this.execute !== null) { await this.execute.call(null); }
+  }
+
+  private _export_object(object: Record<string, any>): SystemExports {
+    if (object.__esModule) { Object.defineProperty(this.exports, "__esModule", { enumerable: false, value: object.__esModule }); }
+    let changed: boolean = false;
+    for (const [key, value] of Object.entries(object)) {
+      if (!(key in this.exports) || (this.exports[key] !== value)) {
+        this.exports[key] = value;
+        changed = true;
+      }
+    }
+    if (changed) for (const setter of this.setters) { setter(this.exports); }
+    return this.exports;
+  }
+
+  private _export_property<T>(key: string, value: T): typeof value {
+    if (!(key in this.exports) || (this.exports[key] !== value)) {
+      this.exports[key] = value;
+      for (const setter of this.setters) { setter(this.exports); }
+    }
+    return value;
+  }
+
+  public async process(): Promise<SystemExports> {
+    await this._process_load(this.dep_load_done);
+    await this._process_link(this.dep_link_done);
+    return this.exports;
+  }
+
+  private async _process_load(dep_load_done: Set<string>): Promise<void> {
+    if (dep_load_done.has(this.url)) { return; } dep_load_done.add(this.url);
+    if (!this.load_done) { this.load_done = true; await this._load(); } // before dependencies
+    for (const dep_module of this.dep_modules) { await dep_module._process_load(dep_load_done); }
+  }
+
+  private async _process_link(dep_link_done: Set<string>): Promise<void> {
+    if (dep_link_done.has(this.url)) { return; } dep_link_done.add(this.url);
+    for (const dep_module of this.dep_modules) { await dep_module._process_link(dep_link_done); }
+    if (!this.link_done) { this.link_done = true; await this._link(); } // after dependencies
   }
 }
 
 class SystemLoader {
-  private init: Promise<void> = this._init();
+  private init_done: boolean = false;
   private base_url: string = SystemLoader.__get_root_url();
   private readonly import_map: SystemImportMap = { imports: {}, scopes: {} };
-  private readonly registry: Map<string, SystemModule> = new Map();
+  public readonly registry: Map<string, SystemModule> = new Map();
 
   public config(config: Readonly<SystemConfiguration>): void {
     if (config.baseUrl) {
@@ -87,29 +160,22 @@ class SystemLoader {
     }
   }
 
-  public async import(id: string): Promise<SystemExports> {
-    await this.init;
-    return this._import_module(id, this.base_url);
-  }
-
-  private async _init(): Promise<void> {
-    for (const config of await SystemLoader.__get_init_configs()) {
-      this.config(config);
+  public async import(id: string, parent_url: string = this.base_url): Promise<SystemExports> {
+    if (!this.init_done) {
+      this.init_done = true;
+      for (const config of await SystemLoader.__get_init_configs()) {
+        this.config(config);
+      }
+      for (const module_id of await SystemLoader.__get_init_module_ids()) {
+        await this.import(module_id);
+      }
     }
-    for (const module_id of await SystemLoader.__get_init_module_ids()) {
-      await this._import_module(module_id, this.base_url);
-    }
+    const url: string = this.resolve(id, parent_url);
+    const module: SystemModule = this.registry.get(url) || new SystemModule(this, url);
+    return module.process();
   }
 
-  private async _import_module(id: string, parent_url: string): Promise<SystemExports> {
-    const url: string = this._resolve_url(id, parent_url);
-    const module: SystemModule = this.registry.get(url) || this._make_module(url);
-    await SystemLoader._load_module(module, {});
-    await SystemLoader._link_module(module, {});
-    return module.exports;
-  }
-
-  private _resolve_url(id: string, parent_url: string): string {
+  public resolve(id: string, parent_url: string = this.base_url): string {
     const import_map_url: string | undefined = SystemLoader._resolve_import_map(this.import_map, id, parent_url);
     if (import_map_url) {
       // console.log(`import map resolved "${id}" from "${parent_url}" to "${import_map_url}"`);
@@ -121,77 +187,6 @@ class SystemLoader {
       return url;
     }
     throw new Error(`Cannot resolve "${id}" from ${parent_url}`);
-  }
-
-  private _make_module(url: string): SystemModule {
-    const module: SystemModule = new SystemModule(url);
-    this.registry.set(url, module);
-
-    module.load = async (): Promise<void> => {
-      const source: string = await SystemLoader.__load_text(url);
-      let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => { } }) };
-      const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
-      const common_module = { exports: module.exports };
-      (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${url}`)({ register }, common_module, common_module.exports);
-      if (common_module.exports !== module.exports) { module.exports.default = common_module.exports; }
-      const { deps, declare } = registration;
-      const _import: SystemImport = (id: string): Promise<SystemExports> => this._import_module(id, url);
-      const _export: SystemExport = (...args: any[]): any => {
-        if (args.length === 1 && typeof args[0] === "object") {
-          const exports: Record<string, any> = args[0];
-          if (exports.__esModule) { Object.defineProperty(module.exports, "__esModule", { enumerable: false, value: exports.__esModule }); }
-          let changed: boolean = false;
-          for (const [key, value] of Object.entries(exports)) {
-            if (!(key in module.exports) || (module.exports[key] !== value)) {
-              module.exports[key] = value;
-              changed = true;
-            }
-          }
-          if (changed) for (const setter of module.setters) { setter(module.exports); }
-          return module.exports;
-        }
-        if (args.length === 2 && typeof args[0] === "string") {
-          const key: string = args[0];
-          const value: any = args[1];
-          if (!(key in module.exports) || (module.exports[key] !== value)) {
-            module.exports[key] = value;
-            for (const setter of module.setters) { setter(module.exports); }
-          }
-          return value;
-        }
-        throw new Error(args.toString());
-      }
-      const resolve: SystemResolve = (id: string): string => this._resolve_url(id, url);
-      const context: SystemContext = { id: url, import: _import, meta: { url, resolve } };
-      const { setters, execute } = declare(_export, context);
-      for (const [dep_index, dep_id] of deps.entries()) {
-        const dep_url: string = this._resolve_url(dep_id, url);
-        const dep_module: SystemModule = this.registry.get(dep_url) || this._make_module(dep_url);
-        const dep_setter: SystemSetter = setters[dep_index] || (() => {}); // setters match deps order
-        dep_module.setters.add(dep_setter);
-        module.dep_modules.add(dep_module);
-        dep_setter(dep_module.exports);
-      }
-      module.execute = execute || (() => {});
-    };
-
-    module.link = async (): Promise<void> => {
-      if (module.execute !== null) { await module.execute.call(null); }
-    };
-
-    return module;
-  }
-
-  private static async _load_module(module: SystemModule, done: { [key: string]: boolean }): Promise<void> {
-    if (done[module.url]) { return; } done[module.url] = true;
-    const load = module.load; module.load = null; if (load !== null) { await load(); } // before dependencies
-    for (const dep_module of module.dep_modules) { await SystemLoader._load_module(dep_module, done); }
-  }
-
-  private static async _link_module(module: SystemModule, done: { [key: string]: boolean }): Promise<void> {
-    if (done[module.url]) { return; } done[module.url] = true;
-    for (const dep_module of module.dep_modules) { await SystemLoader._link_module(dep_module, done); }
-    const link = module.link; module.link = null; if (link !== null) { await link(); } // after dependencies
   }
 
   // import maps
@@ -285,13 +280,13 @@ class SystemLoader {
 
   // platform specific
 
-  private static readonly PLATFORM: "browser" | "command" = (() => {
+  public static readonly PLATFORM: "browser" | "command" = (() => {
     if (typeof window !== "undefined") { return "browser"; }
     if (typeof process !== "undefined") { return "command"; }
     throw new Error("TODO: PLATFORM");
   })();
 
-  private static __get_root_url(): string {
+  public static __get_root_url(): string {
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_root_url()`);
       case "browser": return new URL(location.pathname, location.origin).href;
@@ -299,7 +294,7 @@ class SystemLoader {
     }
   }
 
-  private static async __load_text(url: string): Promise<string> {
+  public static async __load_text(url: string): Promise<string> {
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __load_text(${url})`);
       case "browser": {
@@ -313,7 +308,7 @@ class SystemLoader {
     }
   }
 
-  private static async __get_init_configs(): Promise<Set<Readonly<SystemConfiguration>>> {
+  public static async __get_init_configs(): Promise<Set<Readonly<SystemConfiguration>>> {
     const configs: Set<Readonly<SystemConfiguration>> = new Set();
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_configs()`);
@@ -351,7 +346,7 @@ class SystemLoader {
     return configs;
   }
 
-  private static async __get_init_module_ids(): Promise<Set<string>> {
+  public static async __get_init_module_ids(): Promise<Set<string>> {
     const module_ids: Set<string> = new Set();
     switch (SystemLoader.PLATFORM) {
       default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_module_ids()`);

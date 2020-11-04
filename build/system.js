@@ -12,20 +12,133 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 class SystemModule {
-    constructor(url) {
+    constructor(loader, url) {
+        this.loader = loader;
         this.url = url;
         this.dep_modules = new Set(); // dependent modules
-        this.load = null;
-        this.link = null;
+        this.load_done = false;
+        this.link_done = false;
         this.execute = null;
         this.setters = new Set(); // setters for modules dependent on this module
         this.exports = Object.create(null);
+        this.dep_load_done = new Set();
+        this.dep_link_done = new Set();
+        this.loader.registry.set(this.url, this);
         Object.defineProperty(this.exports, Symbol.toStringTag, { value: "Module" });
+    }
+    _load() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const source = yield SystemLoader.__load_text(this.url);
+            let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
+            const register = (deps, declare) => { registration = { deps, declare }; };
+            const common = { exports: this.exports };
+            (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
+            if (common.exports !== this.exports) {
+                this.exports.default = common.exports;
+            }
+            const { deps, declare } = registration;
+            const _import = (id) => this.loader.import(id, this.url);
+            const _export = (...args) => {
+                if (args.length === 1 && typeof args[0] === "object") {
+                    return this._export_object(args[0]);
+                }
+                if (args.length === 2 && typeof args[0] === "string") {
+                    return this._export_property(args[0], args[1]);
+                }
+                throw new Error(args.toString());
+            };
+            const resolve = (id) => this.loader.resolve(id, this.url);
+            const context = { id: this.url, import: _import, meta: { url: this.url, resolve } };
+            const { setters, execute } = declare(_export, context);
+            for (const [dep_index, dep_id] of deps.entries()) {
+                const dep_url = this.loader.resolve(dep_id, this.url);
+                const dep_module = this.loader.registry.get(dep_url) || new SystemModule(this.loader, dep_url);
+                this.dep_modules.add(dep_module);
+                const dep_setter = setters[dep_index]; // setters match deps order
+                if (dep_setter) {
+                    dep_module.setters.add(dep_setter);
+                    dep_setter(dep_module.exports);
+                }
+            }
+            if (execute) {
+                this.execute = execute;
+            }
+        });
+    }
+    _link() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (this.execute !== null) {
+                yield this.execute.call(null);
+            }
+        });
+    }
+    _export_object(object) {
+        if (object.__esModule) {
+            Object.defineProperty(this.exports, "__esModule", { enumerable: false, value: object.__esModule });
+        }
+        let changed = false;
+        for (const [key, value] of Object.entries(object)) {
+            if (!(key in this.exports) || (this.exports[key] !== value)) {
+                this.exports[key] = value;
+                changed = true;
+            }
+        }
+        if (changed)
+            for (const setter of this.setters) {
+                setter(this.exports);
+            }
+        return this.exports;
+    }
+    _export_property(key, value) {
+        if (!(key in this.exports) || (this.exports[key] !== value)) {
+            this.exports[key] = value;
+            for (const setter of this.setters) {
+                setter(this.exports);
+            }
+        }
+        return value;
+    }
+    process() {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this._process_load(this.dep_load_done);
+            yield this._process_link(this.dep_link_done);
+            return this.exports;
+        });
+    }
+    _process_load(dep_load_done) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (dep_load_done.has(this.url)) {
+                return;
+            }
+            dep_load_done.add(this.url);
+            if (!this.load_done) {
+                this.load_done = true;
+                yield this._load();
+            } // before dependencies
+            for (const dep_module of this.dep_modules) {
+                yield dep_module._process_load(dep_load_done);
+            }
+        });
+    }
+    _process_link(dep_link_done) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (dep_link_done.has(this.url)) {
+                return;
+            }
+            dep_link_done.add(this.url);
+            for (const dep_module of this.dep_modules) {
+                yield dep_module._process_link(dep_link_done);
+            }
+            if (!this.link_done) {
+                this.link_done = true;
+                yield this._link();
+            } // after dependencies
+        });
     }
 }
 class SystemLoader {
     constructor() {
-        this.init = this._init();
+        this.init_done = false;
         this.base_url = SystemLoader.__get_root_url();
         this.import_map = { imports: {}, scopes: {} };
         this.registry = new Map();
@@ -38,32 +151,23 @@ class SystemLoader {
             SystemLoader._parse_import_map(config.map, this.base_url, this.import_map);
         }
     }
-    import(id) {
+    import(id, parent_url = this.base_url) {
         return __awaiter(this, void 0, void 0, function* () {
-            yield this.init;
-            return this._import_module(id, this.base_url);
-        });
-    }
-    _init() {
-        return __awaiter(this, void 0, void 0, function* () {
-            for (const config of yield SystemLoader.__get_init_configs()) {
-                this.config(config);
+            if (!this.init_done) {
+                this.init_done = true;
+                for (const config of yield SystemLoader.__get_init_configs()) {
+                    this.config(config);
+                }
+                for (const module_id of yield SystemLoader.__get_init_module_ids()) {
+                    yield this.import(module_id);
+                }
             }
-            for (const module_id of yield SystemLoader.__get_init_module_ids()) {
-                yield this._import_module(module_id, this.base_url);
-            }
+            const url = this.resolve(id, parent_url);
+            const module = this.registry.get(url) || new SystemModule(this, url);
+            return module.process();
         });
     }
-    _import_module(id, parent_url) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const url = this._resolve_url(id, parent_url);
-            const module = this.registry.get(url) || this._make_module(url);
-            yield SystemLoader._load_module(module, {});
-            yield SystemLoader._link_module(module, {});
-            return module.exports;
-        });
-    }
-    _resolve_url(id, parent_url) {
+    resolve(id, parent_url = this.base_url) {
         const import_map_url = SystemLoader._resolve_import_map(this.import_map, id, parent_url);
         if (import_map_url) {
             // console.log(`import map resolved "${id}" from "${parent_url}" to "${import_map_url}"`);
@@ -75,104 +179,6 @@ class SystemLoader {
             return url;
         }
         throw new Error(`Cannot resolve "${id}" from ${parent_url}`);
-    }
-    _make_module(url) {
-        const module = new SystemModule(url);
-        this.registry.set(url, module);
-        module.load = () => __awaiter(this, void 0, void 0, function* () {
-            const source = yield SystemLoader.__load_text(url);
-            let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
-            const register = (deps, declare) => { registration = { deps, declare }; };
-            const common_module = { exports: module.exports };
-            (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${url}`)({ register }, common_module, common_module.exports);
-            if (common_module.exports !== module.exports) {
-                module.exports.default = common_module.exports;
-            }
-            const { deps, declare } = registration;
-            const _import = (id) => this._import_module(id, url);
-            const _export = (...args) => {
-                if (args.length === 1 && typeof args[0] === "object") {
-                    const exports = args[0];
-                    if (exports.__esModule) {
-                        Object.defineProperty(module.exports, "__esModule", { enumerable: false, value: exports.__esModule });
-                    }
-                    let changed = false;
-                    for (const [key, value] of Object.entries(exports)) {
-                        if (!(key in module.exports) || (module.exports[key] !== value)) {
-                            module.exports[key] = value;
-                            changed = true;
-                        }
-                    }
-                    if (changed)
-                        for (const setter of module.setters) {
-                            setter(module.exports);
-                        }
-                    return module.exports;
-                }
-                if (args.length === 2 && typeof args[0] === "string") {
-                    const key = args[0];
-                    const value = args[1];
-                    if (!(key in module.exports) || (module.exports[key] !== value)) {
-                        module.exports[key] = value;
-                        for (const setter of module.setters) {
-                            setter(module.exports);
-                        }
-                    }
-                    return value;
-                }
-                throw new Error(args.toString());
-            };
-            const resolve = (id) => this._resolve_url(id, url);
-            const context = { id: url, import: _import, meta: { url, resolve } };
-            const { setters, execute } = declare(_export, context);
-            for (const [dep_index, dep_id] of deps.entries()) {
-                const dep_url = this._resolve_url(dep_id, url);
-                const dep_module = this.registry.get(dep_url) || this._make_module(dep_url);
-                const dep_setter = setters[dep_index] || (() => { }); // setters match deps order
-                dep_module.setters.add(dep_setter);
-                module.dep_modules.add(dep_module);
-                dep_setter(dep_module.exports);
-            }
-            module.execute = execute || (() => { });
-        });
-        module.link = () => __awaiter(this, void 0, void 0, function* () {
-            if (module.execute !== null) {
-                yield module.execute.call(null);
-            }
-        });
-        return module;
-    }
-    static _load_module(module, done) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (done[module.url]) {
-                return;
-            }
-            done[module.url] = true;
-            const load = module.load;
-            module.load = null;
-            if (load !== null) {
-                yield load();
-            } // before dependencies
-            for (const dep_module of module.dep_modules) {
-                yield SystemLoader._load_module(dep_module, done);
-            }
-        });
-    }
-    static _link_module(module, done) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (done[module.url]) {
-                return;
-            }
-            done[module.url] = true;
-            for (const dep_module of module.dep_modules) {
-                yield SystemLoader._link_module(dep_module, done);
-            }
-            const link = module.link;
-            module.link = null;
-            if (link !== null) {
-                yield link();
-            } // after dependencies
-        });
     }
     // import maps
     // https://github.com/WICG/import-maps

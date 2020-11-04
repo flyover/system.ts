@@ -39,28 +39,33 @@ interface SystemMeta {
 }
 declare type SystemResolve = (id: string) => string;
 declare class SystemModule {
+    readonly loader: SystemLoader;
     readonly url: string;
-    readonly dep_modules: Set<SystemModule>;
-    load: (() => Promise<void>) | null;
-    link: (() => Promise<void>) | null;
-    execute: SystemExecute | null;
-    readonly setters: Set<SystemSetter>;
-    readonly exports: SystemExports;
-    constructor(url: string);
+    private readonly dep_modules;
+    private load_done;
+    private link_done;
+    private execute;
+    private readonly setters;
+    private readonly exports;
+    private readonly dep_load_done;
+    private readonly dep_link_done;
+    constructor(loader: SystemLoader, url: string);
+    private _load;
+    _link(): Promise<void>;
+    private _export_object;
+    private _export_property;
+    process(): Promise<SystemExports>;
+    private _process_load;
+    private _process_link;
 }
 declare class SystemLoader {
-    private init;
+    private init_done;
     private base_url;
     private readonly import_map;
-    private readonly registry;
+    readonly registry: Map<string, SystemModule>;
     config(config: Readonly<SystemConfiguration>): void;
-    import(id: string): Promise<SystemExports>;
-    private _init;
-    private _import_module;
-    private _resolve_url;
-    private _make_module;
-    private static _load_module;
-    private static _link_module;
+    import(id: string, parent_url?: string): Promise<SystemExports>;
+    resolve(id: string, parent_url?: string): string;
     private static _try_parse_url;
     private static _try_parse_url_like;
     private static _parse_import_map;
@@ -69,11 +74,11 @@ declare class SystemLoader {
     private static _resolve_import_map;
     private static _resolve_scopes;
     private static _resolve_imports;
-    private static readonly PLATFORM;
-    private static __get_root_url;
-    private static __load_text;
-    private static __get_init_configs;
-    private static __get_init_module_ids;
+    static readonly PLATFORM: "browser" | "command";
+    static __get_root_url(): string;
+    static __load_text(url: string): Promise<string>;
+    static __get_init_configs(): Promise<Set<Readonly<SystemConfiguration>>>;
+    static __get_init_module_ids(): Promise<Set<string>>;
 }
 declare const System: SystemLoader;
 interface global {
