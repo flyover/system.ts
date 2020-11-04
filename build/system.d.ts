@@ -18,8 +18,8 @@ interface SystemRegistration {
 }
 declare type SystemDeclare = (_export: SystemExport, context?: SystemContext) => SystemDeclaration;
 interface SystemDeclaration {
-    setters: SystemSetter[];
-    execute: SystemExecute;
+    setters: (SystemSetter | undefined)[];
+    execute: SystemExecute | undefined;
 }
 declare type SystemSetter = (exports: SystemExports) => void;
 declare type SystemExecute = () => void | Promise<void>;
@@ -48,12 +48,13 @@ declare class SystemModule {
     constructor(url: string);
 }
 declare class SystemLoader {
-    private done_config;
+    private init;
     private base_url;
     private readonly import_map;
     private readonly registry;
     config(config: Readonly<SystemConfig>): void;
     import(id: string): Promise<SystemExports>;
+    private _init;
     private _import_module;
     private _resolve_url;
     private _make_module;
@@ -70,7 +71,8 @@ declare class SystemLoader {
     private static readonly PLATFORM;
     private static __get_root_url;
     private static __load_text;
-    private static __init_config;
+    private static __get_init_configs;
+    private static __get_init_module_ids;
 }
 declare const System: SystemLoader;
 interface global {

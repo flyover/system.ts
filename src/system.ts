@@ -30,8 +30,8 @@ interface SystemRegistration {
 type SystemDeclare = (_export: SystemExport, context?: SystemContext) => SystemDeclaration;
 
 interface SystemDeclaration {
-  setters: SystemSetter[];
-  execute: SystemExecute;
+  setters: (SystemSetter | undefined)[];
+  execute: SystemExecute | undefined;
 }
 
 type SystemSetter = (exports: SystemExports) => void;
@@ -71,13 +71,12 @@ class SystemModule {
 }
 
 class SystemLoader {
-  private done_config: boolean = false;
+  private init: Promise<void> = this._init();
   private base_url: string = SystemLoader.__get_root_url();
   private readonly import_map: SystemImportMap = { imports: {}, scopes: {} };
   private readonly registry: Map<string, SystemModule> = new Map();
 
   public config(config: Readonly<SystemConfig>): void {
-    if (!this.done_config) { this.done_config = true; }
     if (config.baseUrl) {
       this.base_url = SystemLoader._try_parse_url_like(config.baseUrl, SystemLoader.__get_root_url()) || this.base_url;
     }
@@ -87,11 +86,17 @@ class SystemLoader {
   }
 
   public async import(id: string): Promise<SystemExports> {
-    if (!this.done_config) {
-      this.done_config = true;
-      for (const config of await SystemLoader.__init_config()) { this.config(config); }
-    }
+    await this.init;
     return this._import_module(id, this.base_url);
+  }
+
+  private async _init(): Promise<void> {
+    for (const config of await SystemLoader.__get_init_configs()) {
+      this.config(config);
+    }
+    for (const module_id of await SystemLoader.__get_init_module_ids()) {
+      await this._import_module(module_id, this.base_url);
+    }
   }
 
   private async _import_module(id: string, parent_url: string): Promise<SystemExports> {
@@ -132,6 +137,7 @@ class SystemLoader {
       const _export: SystemExport = (...args: any[]): any => {
         if (args.length === 1 && typeof args[0] === "object") {
           const exports: Record<string, any> = args[0];
+          if (exports.__esModule) { Object.defineProperty(module.exports, "__esModule", { enumerable: false, value: exports.__esModule }); }
           let changed: boolean = false;
           for (const [key, value] of Object.entries(exports)) {
             if (!(key in module.exports) || (module.exports[key] !== value)) {
@@ -159,12 +165,12 @@ class SystemLoader {
       for (const [dep_index, dep_id] of deps.entries()) {
         const dep_url: string = this._resolve_url(dep_id, url);
         const dep_module: SystemModule = this.registry.get(dep_url) || this._make_module(dep_url);
-        const dep_setter: SystemSetter = setters[dep_index]; // setters match deps order
+        const dep_setter: SystemSetter = setters[dep_index] || (() => {}); // setters match deps order
         dep_module.setters.add(dep_setter);
         module.dep_modules.add(dep_module);
         dep_setter(dep_module.exports);
       }
-      module.execute = execute;
+      module.execute = execute || (() => {});
     };
 
     module.link = async (): Promise<void> => {
@@ -305,20 +311,20 @@ class SystemLoader {
     }
   }
 
-  private static async __init_config(): Promise<Set<Readonly<SystemConfig>>> {
+  private static async __get_init_configs(): Promise<Set<Readonly<SystemConfig>>> {
     const configs: Set<Readonly<SystemConfig>> = new Set();
     switch (SystemLoader.PLATFORM) {
-      default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __init_config()`);
+      default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_configs()`);
       case "browser":
         for (const script of document.querySelectorAll("script")) {
           if (["importmap", "systemjs-importmap"].includes(script.type)) {
             if (script.src) {
-              // <script src="import-map.json"></script>
+              // <script type="systemjs-importmap" src="import-map.json"></script>
               const text: string = await SystemLoader.__load_text(script.src);
               configs.add({ map: JSON.parse(text) });
             }
             else {
-              // <script>{ imports: { ... }, scopes: { ... } }</script>
+              // <script type="systemjs-importmap">{ imports: { ... }, scopes: { ... } }</script>
               configs.add({ map: JSON.parse(script.innerHTML) });
             }
           }
@@ -330,11 +336,11 @@ class SystemLoader {
           const url: string = require("path").resolve(process.cwd(), "system.config.js");
           const text: string = await SystemLoader.__load_text(url);
           const config = (config: Readonly<SystemConfig>): void => { configs.add(config); };
-          (0, eval)(`(function (System) { ${text} })\n//# sourceURL=${url}`)({ config });
+          (0, eval)(`(function (System) { ${text}\n})\n//# sourceURL=${url}`)({ config });
         } catch (err) { }
         // { imports: { ... }, scopes: { ... } }
         try {
-          const url: string = require("path").resolve(process.cwd(), "system.config.json")
+          const url: string = require("path").resolve(process.cwd(), "system.config.json");
           const text: string = await SystemLoader.__load_text(url);
           configs.add(JSON.parse(text));
         } catch (err) { }
@@ -342,11 +348,32 @@ class SystemLoader {
     }
     return configs;
   }
+
+  private static async __get_init_module_ids(): Promise<Set<string>> {
+    const module_ids: Set<string> = new Set();
+    switch (SystemLoader.PLATFORM) {
+      default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_module_ids()`);
+      case "browser":
+        for (const script of document.querySelectorAll("script")) {
+          if (["module", "systemjs-module"].includes(script.type)) {
+            const match: RegExpMatchArray | null = script.src.match(/^import:(.*)$/);
+            if (match !== null) {
+              // <script type="systemjs-module" src="import:foo"></script>
+              module_ids.add(match[1]);
+            }
+          }
+        }
+        break;
+      case "command":
+        break;
+    }
+    return module_ids;
+  }
 }
 
 // global instance
 
-const System = new SystemLoader();
+const System: SystemLoader = new SystemLoader();
 interface global { readonly System: SystemLoader; }
 (<any>globalThis)["System"] = System;
 

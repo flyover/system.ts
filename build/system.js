@@ -25,15 +25,12 @@ class SystemModule {
 }
 class SystemLoader {
     constructor() {
-        this.done_config = false;
+        this.init = this._init();
         this.base_url = SystemLoader.__get_root_url();
         this.import_map = { imports: {}, scopes: {} };
         this.registry = new Map();
     }
     config(config) {
-        if (!this.done_config) {
-            this.done_config = true;
-        }
         if (config.baseUrl) {
             this.base_url = SystemLoader._try_parse_url_like(config.baseUrl, SystemLoader.__get_root_url()) || this.base_url;
         }
@@ -43,13 +40,18 @@ class SystemLoader {
     }
     import(id) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.done_config) {
-                this.done_config = true;
-                for (const config of yield SystemLoader.__init_config()) {
-                    this.config(config);
-                }
-            }
+            yield this.init;
             return this._import_module(id, this.base_url);
+        });
+    }
+    _init() {
+        return __awaiter(this, void 0, void 0, function* () {
+            for (const config of yield SystemLoader.__get_init_configs()) {
+                this.config(config);
+            }
+            for (const module_id of yield SystemLoader.__get_init_module_ids()) {
+                yield this._import_module(module_id, this.base_url);
+            }
         });
     }
     _import_module(id, parent_url) {
@@ -91,6 +93,9 @@ class SystemLoader {
             const _export = (...args) => {
                 if (args.length === 1 && typeof args[0] === "object") {
                     const exports = args[0];
+                    if (exports.__esModule) {
+                        Object.defineProperty(module.exports, "__esModule", { enumerable: false, value: exports.__esModule });
+                    }
                     let changed = false;
                     for (const [key, value] of Object.entries(exports)) {
                         if (!(key in module.exports) || (module.exports[key] !== value)) {
@@ -123,12 +128,12 @@ class SystemLoader {
             for (const [dep_index, dep_id] of deps.entries()) {
                 const dep_url = this._resolve_url(dep_id, url);
                 const dep_module = this.registry.get(dep_url) || this._make_module(dep_url);
-                const dep_setter = setters[dep_index]; // setters match deps order
+                const dep_setter = setters[dep_index] || (() => { }); // setters match deps order
                 dep_module.setters.add(dep_setter);
                 module.dep_modules.add(dep_module);
                 dep_setter(dep_module.exports);
             }
-            module.execute = execute;
+            module.execute = execute || (() => { });
         });
         module.link = () => __awaiter(this, void 0, void 0, function* () {
             if (module.execute !== null) {
@@ -280,21 +285,21 @@ class SystemLoader {
             }
         });
     }
-    static __init_config() {
+    static __get_init_configs() {
         return __awaiter(this, void 0, void 0, function* () {
             const configs = new Set();
             switch (SystemLoader.PLATFORM) {
-                default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __init_config()`);
+                default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_configs()`);
                 case "browser":
                     for (const script of document.querySelectorAll("script")) {
                         if (["importmap", "systemjs-importmap"].includes(script.type)) {
                             if (script.src) {
-                                // <script src="import-map.json"></script>
+                                // <script type="systemjs-importmap" src="import-map.json"></script>
                                 const text = yield SystemLoader.__load_text(script.src);
                                 configs.add({ map: JSON.parse(text) });
                             }
                             else {
-                                // <script>{ imports: { ... }, scopes: { ... } }</script>
+                                // <script type="systemjs-importmap">{ imports: { ... }, scopes: { ... } }</script>
                                 configs.add({ map: JSON.parse(script.innerHTML) });
                             }
                         }
@@ -306,7 +311,7 @@ class SystemLoader {
                         const url = require("path").resolve(process.cwd(), "system.config.js");
                         const text = yield SystemLoader.__load_text(url);
                         const config = (config) => { configs.add(config); };
-                        (0, eval)(`(function (System) { ${text} })\n//# sourceURL=${url}`)({ config });
+                        (0, eval)(`(function (System) { ${text}\n})\n//# sourceURL=${url}`)({ config });
                     }
                     catch (err) { }
                     // { imports: { ... }, scopes: { ... } }
@@ -319,6 +324,28 @@ class SystemLoader {
                     break;
             }
             return configs;
+        });
+    }
+    static __get_init_module_ids() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const module_ids = new Set();
+            switch (SystemLoader.PLATFORM) {
+                default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __get_init_module_ids()`);
+                case "browser":
+                    for (const script of document.querySelectorAll("script")) {
+                        if (["module", "systemjs-module"].includes(script.type)) {
+                            const match = script.src.match(/^import:(.*)$/);
+                            if (match !== null) {
+                                // <script type="systemjs-module" src="import:foo"></script>
+                                module_ids.add(match[1]);
+                            }
+                        }
+                    }
+                    break;
+                case "command":
+                    break;
+            }
+            return module_ids;
         });
     }
 }
