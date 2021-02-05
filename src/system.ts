@@ -46,18 +46,18 @@ interface SystemContext {
   meta?: SystemMeta;
 }
 
-type SystemImport = (id: string) => Promise<SystemExports>;
+type SystemImport = (id: string, parent_url?: string) => Promise<SystemExports>;
 
 type SystemExport = SystemExportObject | SystemExportProperty;
 type SystemExportObject = (exports: Record<string, any>) => SystemExports;
-type SystemExportProperty = <T>(key: string, value: T) => typeof value;
+type SystemExportProperty = <T>(key: string, value: T) => T;
 
 interface SystemMeta {
   url: string;
   resolve: SystemResolve;
 }
 
-type SystemResolve = (id: string) => string;
+type SystemResolve = (id: string, parent_url?: string) => string;
 
 class SystemModule {
   private readonly dep_modules: Set<SystemModule> = new Set(); // dependent modules
@@ -82,13 +82,13 @@ class SystemModule {
     (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
     if (common.exports !== this.exports) { this.exports.default = common.exports; }
     const { deps, declare } = registration;
-    const _import: SystemImport = (id: string): Promise<SystemExports> => this.loader.import(id, this.url);
+    const _import: SystemImport = (id: string, parent_url: string = this.url): Promise<SystemExports> => this.loader.import(id, parent_url);
     const _export: SystemExport = (...args: any[]): any => {
       if (args.length === 1 && typeof args[0] === "object") { return this._export_object(args[0]); }
       if (args.length === 2 && typeof args[0] === "string") { return this._export_property(args[0], args[1]); }
       throw new Error(args.toString());
     }
-    const resolve: SystemResolve = (id: string): string => this.loader.resolve(id, this.url);
+    const resolve: SystemResolve = (id: string, parent_url: string = this.url): string => this.loader.resolve(id, parent_url);
     const context: SystemContext = { id: this.url, import: _import, meta: { url: this.url, resolve } };
     const { setters, execute } = declare(_export, context);
     for (const [dep_index, dep_id] of deps.entries()) {
@@ -118,7 +118,7 @@ class SystemModule {
     return this.exports;
   }
 
-  private _export_property<T>(key: string, value: T): typeof value {
+  private _export_property<T>(key: string, value: T): T {
     if (!(key in this.exports) || (this.exports[key] !== value)) {
       this.exports[key] = value;
       for (const setter of this.setters) { setter(this.exports); }

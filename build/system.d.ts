@@ -29,15 +29,15 @@ interface SystemContext {
     import: SystemImport;
     meta?: SystemMeta;
 }
-declare type SystemImport = (id: string) => Promise<SystemExports>;
+declare type SystemImport = (id: string, parent_url?: string) => Promise<SystemExports>;
 declare type SystemExport = SystemExportObject | SystemExportProperty;
 declare type SystemExportObject = (exports: Record<string, any>) => SystemExports;
-declare type SystemExportProperty = <T>(key: string, value: T) => typeof value;
+declare type SystemExportProperty = <T>(key: string, value: T) => T;
 interface SystemMeta {
     url: string;
     resolve: SystemResolve;
 }
-declare type SystemResolve = (id: string) => string;
+declare type SystemResolve = (id: string, parent_url?: string) => string;
 declare class SystemModule {
     readonly loader: SystemLoader;
     readonly url: string;

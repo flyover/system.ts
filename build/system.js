@@ -37,7 +37,7 @@ class SystemModule {
                 this.exports.default = common.exports;
             }
             const { deps, declare } = registration;
-            const _import = (id) => this.loader.import(id, this.url);
+            const _import = (id, parent_url = this.url) => this.loader.import(id, parent_url);
             const _export = (...args) => {
                 if (args.length === 1 && typeof args[0] === "object") {
                     return this._export_object(args[0]);
@@ -47,7 +47,7 @@ class SystemModule {
                 }
                 throw new Error(args.toString());
             };
-            const resolve = (id) => this.loader.resolve(id, this.url);
+            const resolve = (id, parent_url = this.url) => this.loader.resolve(id, parent_url);
             const context = { id: this.url, import: _import, meta: { url: this.url, resolve } };
             const { setters, execute } = declare(_export, context);
             for (const [dep_index, dep_id] of deps.entries()) {
