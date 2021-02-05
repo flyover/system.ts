@@ -16,8 +16,8 @@ class SystemModule {
         this.loader = loader;
         this.url = url;
         this.dep_modules = new Set(); // dependent modules
-        this.load_done = false;
-        this.link_done = false;
+        this.load_done = null;
+        this.link_done = null;
         this.execute = null;
         this.setters = new Set(); // setters for modules dependent on this module
         this.exports = Object.create(null);
@@ -111,10 +111,8 @@ class SystemModule {
                 return;
             }
             dep_load_done.add(this.url);
-            if (!this.load_done) {
-                this.load_done = true;
-                yield this._load();
-            } // before dependencies
+            this.load_done = this.load_done || this._load();
+            yield this.load_done; // before dependencies
             for (const dep_module of this.dep_modules) {
                 yield dep_module._process_load(dep_load_done);
             }
@@ -129,19 +127,26 @@ class SystemModule {
             for (const dep_module of this.dep_modules) {
                 yield dep_module._process_link(dep_link_done);
             }
-            if (!this.link_done) {
-                this.link_done = true;
-                yield this._link();
-            } // after dependencies
+            this.link_done = this.link_done || this._link();
+            yield this.link_done; // after dependencies
         });
     }
 }
 class SystemLoader {
     constructor() {
-        this.init_done = false;
         this.base_url = SystemLoader.__get_root_url();
         this.import_map = { imports: {}, scopes: {} };
         this.registry = new Map();
+        this.init_configs = (() => __awaiter(this, void 0, void 0, function* () {
+            for (const config of yield SystemLoader.__get_init_configs()) {
+                this.config(config);
+            }
+        }))();
+        this.init_modules = (() => __awaiter(this, void 0, void 0, function* () {
+            for (const module_id of yield SystemLoader.__get_init_module_ids()) {
+                yield this.import(module_id);
+            }
+        }))();
     }
     config(config) {
         if (config.baseUrl) {
@@ -153,15 +158,7 @@ class SystemLoader {
     }
     import(id, parent_url = this.base_url) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.init_done) {
-                this.init_done = true;
-                for (const config of yield SystemLoader.__get_init_configs()) {
-                    this.config(config);
-                }
-                for (const module_id of yield SystemLoader.__get_init_module_ids()) {
-                    yield this.import(module_id);
-                }
-            }
+            yield this.init_configs;
             const url = this.resolve(id, parent_url);
             const module = this.registry.get(url) || new SystemModule(this, url);
             return module.process();
@@ -320,7 +317,7 @@ class SystemLoader {
                         (0, eval)(`(function (System) { ${source}\n})\n//# sourceURL=${url}`)({ config });
                     }
                     catch (err) { }
-                    // { imports: { ... }, scopes: { ... } }
+                    // { baseUrl: "...", map: { imports: { ... }, scopes: { ... } } }
                     try {
                         const url = require("path").resolve(process.cwd(), "system.config.json");
                         const source = yield SystemLoader.__load_text(url);

@@ -61,8 +61,8 @@ type SystemResolve = (id: string) => string;
 
 class SystemModule {
   private readonly dep_modules: Set<SystemModule> = new Set(); // dependent modules
-  private load_done: boolean = false;
-  private link_done: boolean = false;
+  private load_done: Promise<void> | null = null;
+  private link_done: Promise<void> | null = null;
   private execute: SystemExecute | null = null;
   private readonly setters: Set<SystemSetter> = new Set(); // setters for modules dependent on this module
   private readonly exports: SystemExports = Object.create(null);
@@ -134,22 +134,33 @@ class SystemModule {
 
   private async _process_load(dep_load_done: Set<string>): Promise<void> {
     if (dep_load_done.has(this.url)) { return; } dep_load_done.add(this.url);
-    if (!this.load_done) { this.load_done = true; await this._load(); } // before dependencies
+    this.load_done = this.load_done || this._load(); await this.load_done; // before dependencies
     for (const dep_module of this.dep_modules) { await dep_module._process_load(dep_load_done); }
   }
 
   private async _process_link(dep_link_done: Set<string>): Promise<void> {
     if (dep_link_done.has(this.url)) { return; } dep_link_done.add(this.url);
     for (const dep_module of this.dep_modules) { await dep_module._process_link(dep_link_done); }
-    if (!this.link_done) { this.link_done = true; await this._link(); } // after dependencies
+    this.link_done = this.link_done || this._link(); await this.link_done; // after dependencies
   }
 }
 
 class SystemLoader {
-  private init_done: boolean = false;
   private base_url: string = SystemLoader.__get_root_url();
   private readonly import_map: SystemImportMap = { imports: {}, scopes: {} };
   public readonly registry: Map<string, SystemModule> = new Map();
+  
+  private init_configs: Promise<void> = (async (): Promise<void> => {
+    for (const config of await SystemLoader.__get_init_configs()) {
+      this.config(config);
+    }
+  })();
+
+  private init_modules: Promise<void> = (async (): Promise<void> => {
+    for (const module_id of await SystemLoader.__get_init_module_ids()) {
+      await this.import(module_id);
+    }
+  })();
 
   public config(config: Readonly<SystemConfiguration>): void {
     if (config.baseUrl) {
@@ -161,15 +172,7 @@ class SystemLoader {
   }
 
   public async import(id: string, parent_url: string = this.base_url): Promise<SystemExports> {
-    if (!this.init_done) {
-      this.init_done = true;
-      for (const config of await SystemLoader.__get_init_configs()) {
-        this.config(config);
-      }
-      for (const module_id of await SystemLoader.__get_init_module_ids()) {
-        await this.import(module_id);
-      }
-    }
+    await this.init_configs;
     const url: string = this.resolve(id, parent_url);
     const module: SystemModule = this.registry.get(url) || new SystemModule(this, url);
     return module.process();
@@ -335,7 +338,7 @@ class SystemLoader {
           const config: SystemConfigure = (config: Readonly<SystemConfiguration>): void => { configs.add(config); };
           (0, eval)(`(function (System) { ${source}\n})\n//# sourceURL=${url}`)({ config });
         } catch (err) { }
-        // { imports: { ... }, scopes: { ... } }
+        // { baseUrl: "...", map: { imports: { ... }, scopes: { ... } } }
         try {
           const url: string = require("path").resolve(process.cwd(), "system.config.json");
           const source: string = await SystemLoader.__load_text(url);

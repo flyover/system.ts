@@ -59,10 +59,11 @@ declare class SystemModule {
     private _process_link;
 }
 declare class SystemLoader {
-    private init_done;
     private base_url;
     private readonly import_map;
     readonly registry: Map<string, SystemModule>;
+    private init_configs;
+    private init_modules;
     config(config: Readonly<SystemConfiguration>): void;
     import(id: string, parent_url?: string): Promise<SystemExports>;
     resolve(id: string, parent_url?: string): string;
