@@ -29,7 +29,7 @@ class SystemModule {
     _load() {
         return __awaiter(this, void 0, void 0, function* () {
             const source = yield SystemLoader.__load_text(this.url);
-            let registration = { deps: [], declare: () => ({ setters: [], execute: () => { } }) };
+            let registration = { deps: [], declare: (_export, context) => ({}) };
             const register = (deps, declare) => { registration = { deps, declare }; };
             const common = { exports: this.exports };
             (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
@@ -51,10 +51,10 @@ class SystemModule {
             const context = { id: this.url, import: _import, meta: { url: this.url, resolve } };
             const { setters, execute } = declare(_export, context);
             for (const [dep_index, dep_id] of deps.entries()) {
-                const dep_url = this.loader.resolve(dep_id, this.url);
+                const dep_url = yield this.loader.resolve(dep_id, this.url);
                 const dep_module = this.loader.registry.get(dep_url) || new SystemModule(this.loader, dep_url);
                 this.dep_modules.add(dep_module);
-                const dep_setter = setters[dep_index]; // setters match deps order
+                const dep_setter = setters && setters[dep_index]; // setters match deps order
                 if (dep_setter) {
                     dep_module.setters.add(dep_setter);
                     dep_setter(dep_module.exports);
@@ -158,24 +158,26 @@ class SystemLoader {
     }
     import(id, parent_url = this.base_url) {
         return __awaiter(this, void 0, void 0, function* () {
-            yield this.init_configs;
-            const url = this.resolve(id, parent_url);
+            const url = yield this.resolve(id, parent_url);
             const module = this.registry.get(url) || new SystemModule(this, url);
             return module.process();
         });
     }
     resolve(id, parent_url = this.base_url) {
-        const import_map_url = SystemLoader._resolve_import_map(this.import_map, id, parent_url);
-        if (import_map_url) {
-            // console.log(`import map resolved "${id}" from "${parent_url}" to "${import_map_url}"`);
-            return import_map_url;
-        }
-        const url = SystemLoader._try_parse_url(id, parent_url);
-        if (url) {
-            // console.log(`resolved "${id}" from "${parent_url}" to "${url}"`);
-            return url;
-        }
-        throw new Error(`Cannot resolve "${id}" from ${parent_url}`);
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.init_configs;
+            const import_map_url = SystemLoader._resolve_import_map(this.import_map, id, parent_url);
+            if (import_map_url) {
+                // console.log(`import map resolved "${id}" from "${parent_url}" to "${import_map_url}"`);
+                return import_map_url;
+            }
+            const url = SystemLoader._try_parse_url(id, parent_url);
+            if (url) {
+                // console.log(`resolved "${id}" from "${parent_url}" to "${url}"`);
+                return url;
+            }
+            throw new Error(`Cannot resolve "${id}" from ${parent_url}`);
+        });
     }
     // import maps
     // https://github.com/WICG/import-maps

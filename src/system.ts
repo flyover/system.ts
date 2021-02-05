@@ -32,8 +32,8 @@ interface SystemRegistration {
 type SystemDeclare = (_export: SystemExport, context?: SystemContext) => SystemDeclaration;
 
 interface SystemDeclaration {
-  setters: (SystemSetter | undefined)[];
-  execute: SystemExecute | undefined;
+  setters?: SystemSetter[];
+  execute?: SystemExecute;
 }
 
 type SystemSetter = (exports: SystemExports) => void;
@@ -57,7 +57,7 @@ interface SystemMeta {
   resolve: SystemResolve;
 }
 
-type SystemResolve = (id: string, parent_url?: string) => string;
+type SystemResolve = (id: string, parent_url?: string) => Promise<string>;
 
 class SystemModule {
   private readonly dep_modules: Set<SystemModule> = new Set(); // dependent modules
@@ -76,7 +76,7 @@ class SystemModule {
 
   private async _load(): Promise<void> {
     const source: string = await SystemLoader.__load_text(this.url);
-    let registration: SystemRegistration = { deps: [], declare: () => ({ setters: [], execute: (): void => { } }) };
+    let registration: SystemRegistration = { deps: [], declare: (_export: SystemExport, context?: SystemContext): SystemDeclaration => ({}) };
     const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
     const common = { exports: this.exports };
     (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
@@ -88,20 +88,20 @@ class SystemModule {
       if (args.length === 2 && typeof args[0] === "string") { return this._export_property(args[0], args[1]); }
       throw new Error(args.toString());
     }
-    const resolve: SystemResolve = (id: string, parent_url: string = this.url): string => this.loader.resolve(id, parent_url);
+    const resolve: SystemResolve = (id: string, parent_url: string = this.url): Promise<string> => this.loader.resolve(id, parent_url);
     const context: SystemContext = { id: this.url, import: _import, meta: { url: this.url, resolve } };
     const { setters, execute } = declare(_export, context);
     for (const [dep_index, dep_id] of deps.entries()) {
-      const dep_url: string = this.loader.resolve(dep_id, this.url);
+      const dep_url: string = await this.loader.resolve(dep_id, this.url);
       const dep_module: SystemModule = this.loader.registry.get(dep_url) || new SystemModule(this.loader, dep_url);
       this.dep_modules.add(dep_module);
-      const dep_setter: SystemSetter | undefined = setters[dep_index]; // setters match deps order
+      const dep_setter: SystemSetter | undefined = setters && setters[dep_index]; // setters match deps order
       if (dep_setter) { dep_module.setters.add(dep_setter); dep_setter(dep_module.exports); }
     }
     if (execute) { this.execute = execute; }
   }
 
-  public async _link(): Promise<void> {
+  private async _link(): Promise<void> {
     if (this.execute !== null) { await this.execute.call(null); }
   }
 
@@ -172,13 +172,13 @@ class SystemLoader {
   }
 
   public async import(id: string, parent_url: string = this.base_url): Promise<SystemExports> {
-    await this.init_configs;
-    const url: string = this.resolve(id, parent_url);
+    const url: string = await this.resolve(id, parent_url);
     const module: SystemModule = this.registry.get(url) || new SystemModule(this, url);
     return module.process();
   }
-
-  public resolve(id: string, parent_url: string = this.base_url): string {
+  
+  public async resolve(id: string, parent_url: string = this.base_url): Promise<string> {
+    await this.init_configs;
     const import_map_url: string | undefined = SystemLoader._resolve_import_map(this.import_map, id, parent_url);
     if (import_map_url) {
       // console.log(`import map resolved "${id}" from "${parent_url}" to "${import_map_url}"`);

@@ -19,8 +19,8 @@ interface SystemRegistration {
 }
 declare type SystemDeclare = (_export: SystemExport, context?: SystemContext) => SystemDeclaration;
 interface SystemDeclaration {
-    setters: (SystemSetter | undefined)[];
-    execute: SystemExecute | undefined;
+    setters?: SystemSetter[];
+    execute?: SystemExecute;
 }
 declare type SystemSetter = (exports: SystemExports) => void;
 declare type SystemExecute = () => void | Promise<void>;
@@ -37,7 +37,7 @@ interface SystemMeta {
     url: string;
     resolve: SystemResolve;
 }
-declare type SystemResolve = (id: string, parent_url?: string) => string;
+declare type SystemResolve = (id: string, parent_url?: string) => Promise<string>;
 declare class SystemModule {
     readonly loader: SystemLoader;
     readonly url: string;
@@ -51,7 +51,7 @@ declare class SystemModule {
     private readonly dep_link_done;
     constructor(loader: SystemLoader, url: string);
     private _load;
-    _link(): Promise<void>;
+    private _link;
     private _export_object;
     private _export_property;
     process(): Promise<SystemExports>;
@@ -66,7 +66,7 @@ declare class SystemLoader {
     private init_modules;
     config(config: Readonly<SystemConfiguration>): void;
     import(id: string, parent_url?: string): Promise<SystemExports>;
-    resolve(id: string, parent_url?: string): string;
+    resolve(id: string, parent_url?: string): Promise<string>;
     private static _try_parse_url;
     private static _try_parse_url_like;
     private static _parse_import_map;
