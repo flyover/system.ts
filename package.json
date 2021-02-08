@@ -8,7 +8,7 @@
     "clean": "rm -rf build",
     "build": "tsc",
     "watch": "tsc --watch",
-    "test": "node -p \"require('.'); console.log(System.import);\""
+    "test": "node -p \"require('.'); System.import('node_modules/typescript/lib/typescript.js').then(ts => console.log(ts.default.version));\""
   },
   "author": {
     "name": "Isaac Burns",
