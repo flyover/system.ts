@@ -81,6 +81,7 @@ class SystemModule {
     const common = { exports: this.exports };
     (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
     if (common.exports !== this.exports) { this.exports.default = common.exports; }
+    for (const setter of this.setters) { setter(this.exports); }
     const { deps, declare } = registration;
     const _import: SystemImport = (id: string, parent_url: string = this.url): Promise<SystemExports> => this.loader.import(id, parent_url);
     const _export: SystemExport = (...args: any[]): any => {

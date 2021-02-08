@@ -36,6 +36,9 @@ class SystemModule {
             if (common.exports !== this.exports) {
                 this.exports.default = common.exports;
             }
+            for (const setter of this.setters) {
+                setter(this.exports);
+            }
             const { deps, declare } = registration;
             const _import = (id, parent_url = this.url) => this.loader.import(id, parent_url);
             const _export = (...args) => {
