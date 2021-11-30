@@ -372,13 +372,11 @@ class SystemLoader {
   }
 }
 
-// global instance
+// global constructor
+interface global { readonly SystemLoader: typeof SystemLoader; }
+(<any>globalThis)["SystemLoader"] ||= SystemLoader;
 
+// global instance
 const System: SystemLoader = new SystemLoader();
 interface global { readonly System: SystemLoader; }
-(<any>globalThis)["System"] = System;
-
-// global constructor
-
-interface global { readonly SystemLoader: typeof SystemLoader; }
-(<any>globalThis)["SystemLoader"] = SystemLoader;
+(<any>globalThis)["System"] ||= System;

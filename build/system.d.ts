@@ -81,10 +81,10 @@ declare class SystemLoader {
     static __get_init_configs(): Promise<Set<Readonly<SystemConfiguration>>>;
     static __get_init_module_ids(): Promise<Set<string>>;
 }
+interface global {
+    readonly SystemLoader: typeof SystemLoader;
+}
 declare const System: SystemLoader;
 interface global {
     readonly System: SystemLoader;
-}
-interface global {
-    readonly SystemLoader: typeof SystemLoader;
 }

@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var _a, _b;
 class SystemModule {
     constructor(loader, url) {
         this.loader = loader;
@@ -367,8 +368,8 @@ SystemLoader.PLATFORM = (() => {
     }
     throw new Error("TODO: PLATFORM");
 })();
+(_a = globalThis)["SystemLoader"] || (_a["SystemLoader"] = SystemLoader);
 // global instance
 const System = new SystemLoader();
-globalThis["System"] = System;
-globalThis["SystemLoader"] = SystemLoader;
+(_b = globalThis)["System"] || (_b["System"] = System);
 //# sourceMappingURL=system.js.map
