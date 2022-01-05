@@ -76,11 +76,85 @@ class SystemModule {
 
   private async _load(): Promise<void> {
     const source: string = await SystemLoader.__load_text(this.url);
+    const eval_args: Map<string, any> = new Map();
+
     let registration: SystemRegistration = { deps: [], declare: (_export: SystemExport, context?: SystemContext): SystemDeclaration => ({}) };
     const register: SystemRegister = (deps: string[], declare: SystemDeclare): void => { registration = { deps, declare }; };
-    const common = { exports: this.exports };
-    (0, eval)(`(function (System, module, exports) { ${source}\n})\n//# sourceURL=${this.url}`)({ register }, common, common.exports);
-    if (common.exports !== this.exports) { this.exports.default = common.exports; }
+    eval_args.set("System", { register });
+
+    // TODO: add hint for CommonJS modules?
+    if (!false) {
+      type CJS_Module = { exports: SystemExports };
+      const cjs_exports: SystemExports = this.exports;
+      const cjs_module: CJS_Module = {
+        get exports(): SystemExports { return cjs_exports; },
+        set exports(value: SystemExports) { if (value !== cjs_exports) { cjs_exports.default = value; } }
+      };
+      const cjs_deps: string[] = [];
+      const cjs_setters: SystemSetter[] = [];
+      const cjs_require = (dep_id: string): SystemExports => {
+        // throw new Error(`TODO: cjs_require("${dep_id}")`);
+        return SystemLoader.__require(dep_id);
+      };
+      const cjs_declare: SystemDeclare = (_export: SystemExport, context?: SystemContext): SystemDeclaration => {
+        const cjs_execute: SystemExecute = (): void => {};
+        return { setters: cjs_setters, execute: cjs_execute };
+      };
+      register(cjs_deps, cjs_declare);
+      eval_args.set("module", cjs_module);
+      eval_args.set("exports", cjs_exports);
+      eval_args.set("require", cjs_require);
+    }
+
+    // TODO: add hint for AMD modules?
+    if (!false) {
+      type AMD_Export = (...amd_dep_exports: SystemExports[]) => SystemExports | undefined;
+      type AMD_Define = (amd_export: AMD_Export) => void;
+      type AMD_DepsDefine = (amd_dep_ids: string[], amd_export: AMD_Export) => void;
+      type AMD_NameDepsDefine = (amd_name: string, amd_dep_ids: string[], amd_export: AMD_Export) => void;
+      const amd_define: AMD_Define | AMD_DepsDefine | AMD_NameDepsDefine = (...args: any[]): void => {
+        const amd_name: string = args.length === 3 ? args[0] : "";
+        const amd_dep_ids: string[] = args.length === 3 ? args[1] : args.length === 2 ? args[0] : [];
+        const amd_export: AMD_Export = args.length === 3 ? args[2] : args.length === 2 ? args[1] : args[0];
+        const amd_deps: string[] = [];
+        const amd_dep_exports: SystemExports[] = [];
+        const amd_setters: SystemSetter[] = [];
+        const amd_require = (dep_id: string): SystemExports => {
+          // throw new Error(`TODO: amd_require("${dep_id}")`);
+          return SystemLoader.__require(dep_id);
+        };
+        for (const [amd_dep_index, amd_dep_id] of amd_dep_ids.entries()) {
+          switch (amd_dep_id) {
+            case "require": amd_dep_exports[amd_dep_index] = amd_require; break;
+            case "module": amd_dep_exports[amd_dep_index] = this; break;
+            case "exports": amd_dep_exports[amd_dep_index] = this.exports; break;
+            default:
+              amd_deps[amd_dep_index] = amd_dep_id;
+              amd_setters[amd_dep_index] = (dep_exports: SystemExports): void => { amd_dep_exports[amd_dep_index] = dep_exports; };
+              break;
+          }
+        }
+        const amd_declare: SystemDeclare = (_export: SystemExport, context?: SystemContext): SystemDeclaration => {
+          const amd_execute: SystemExecute = (): void => {
+            const amd_exports: SystemExports | undefined = amd_export(...amd_dep_exports);
+            if (amd_exports !== undefined) {
+              Object.assign(this.exports, amd_exports);
+              this._export_object(this.exports);
+              this._export_property("default", this.exports);
+            }
+            if (amd_name !== "") { console.log(`TODO: AMD named module "${amd_name}"`); }
+          };
+          return { setters: amd_setters, execute: amd_execute };
+        };
+        register(amd_deps, amd_declare);
+      };
+      (amd_define as any).amd = {};
+      eval_args.set("define", amd_define);
+    }
+
+    const eval_func: string = `(function (${Array.from(eval_args.keys()).join(", ")}) { ${source}\n})\n//# sourceURL=${this.url}`;
+    (0, eval)(eval_func)(...eval_args.values());
+
     for (const setter of this.setters) { setter(this.exports); }
     const { deps, declare } = registration;
     const _import: SystemImport = (id: string, parent_url: string = this.url): Promise<SystemExports> => this.loader.import(id, parent_url);
@@ -369,6 +443,13 @@ class SystemLoader {
         break;
     }
     return module_ids;
+  }
+
+  public static __require(id: string): SystemExports {
+    switch (SystemLoader.PLATFORM) {
+      default: throw new Error(`TODO: ${SystemLoader.PLATFORM} __require(${id})`);
+      case "command": return require(id);
+    }
   }
 }
 

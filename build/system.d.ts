@@ -80,6 +80,7 @@ declare class SystemLoader {
     static __load_text(url: string): Promise<string>;
     static __get_init_configs(): Promise<Set<Readonly<SystemConfiguration>>>;
     static __get_init_module_ids(): Promise<Set<string>>;
+    static __require(id: string): SystemExports;
 }
 interface global {
     readonly SystemLoader: typeof SystemLoader;
