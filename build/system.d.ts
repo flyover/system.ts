@@ -2,42 +2,42 @@ interface SystemConfiguration {
     readonly baseUrl?: string;
     readonly map?: Partial<SystemImportMap>;
 }
-declare type SystemConfigure = (config: Readonly<SystemConfiguration>) => void;
+type SystemConfigure = (config: Readonly<SystemConfiguration>) => void;
 interface SystemImportMap {
     scopes: SystemScopes;
     imports: SystemImports;
 }
-declare type SystemScopes = Record<string, SystemImports>;
-declare type SystemImports = Record<string, string>;
+type SystemScopes = Record<string, SystemImports>;
+type SystemImports = Record<string, string>;
 interface SystemExports extends Record<string, any> {
     default?: any;
 }
-declare type SystemRegister = (deps: string[], declare: SystemDeclare) => void;
+type SystemRegister = (deps: string[], declare: SystemDeclare) => void;
 interface SystemRegistration {
     deps: string[];
     declare: SystemDeclare;
 }
-declare type SystemDeclare = (_export: SystemExport, context?: SystemContext) => SystemDeclaration;
+type SystemDeclare = (_export: SystemExport, context?: SystemContext) => SystemDeclaration;
 interface SystemDeclaration {
     setters?: SystemSetter[];
     execute?: SystemExecute;
 }
-declare type SystemSetter = (exports: SystemExports) => void;
-declare type SystemExecute = () => void | Promise<void>;
+type SystemSetter = (exports: SystemExports) => void;
+type SystemExecute = () => void | Promise<void>;
 interface SystemContext {
     id: string;
     import: SystemImport;
     meta?: SystemMeta;
 }
-declare type SystemImport = (id: string, parent_url?: string) => Promise<SystemExports>;
-declare type SystemExport = SystemExportObject | SystemExportProperty;
-declare type SystemExportObject = (exports: Record<string, any>) => SystemExports;
-declare type SystemExportProperty = <T>(key: string, value: T) => T;
+type SystemImport = (id: string, parent_url?: string) => Promise<SystemExports>;
+type SystemExport = SystemExportObject | SystemExportProperty;
+type SystemExportObject = (exports: Record<string, any>) => SystemExports;
+type SystemExportProperty = <T>(key: string, value: T) => T;
 interface SystemMeta {
     url: string;
     resolve: SystemResolve;
 }
-declare type SystemResolve = (id: string, parent_url?: string) => Promise<string>;
+type SystemResolve = (id: string, parent_url?: string) => Promise<string>;
 declare class SystemModule {
     readonly loader: SystemLoader;
     readonly url: string;
